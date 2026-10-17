@@ -10,7 +10,8 @@ As of 2026-10-17. Everything below was actually executed; what was not executed 
   checked at start; if one is missing, the agent exits with **exit code 3** and a concrete diagnosis. It never
   silently falls back to polling.
 - The collector test suite (tests against the real kernel, no mocks) passes completely on **Linux 5.15, 6.8 and
-  6.12**, each on **arm64 and amd64**. The kernels are unmodified distribution kernels.
+  6.12**, each on **arm64 and amd64**, and on the **6.17 Azure kernel of the GitHub-hosted runners** (amd64 and arm64,
+  see [acceptance.md](acceptance.md)). The kernels are unmodified distribution kernels.
 - The systemd unit (`packaging/systemd/process-watcher.service`) passed its complete test (140 checks) under a real
   **systemd 249** as PID 1 on the same six kernel/architecture combinations; see [acceptance.md](acceptance.md). Other
   systemd versions were not tested.
@@ -26,6 +27,7 @@ As of 2026-10-17. Everything below was actually executed; what was not executed 
 | B | Ubuntu 22.04 GA, `5.15.0-198.208` | arm64, amd64 | QEMU 10.0.13, **CPU emulation (TCG)**, real distribution kernel | minimum kernel |
 | C | Ubuntu 24.04 GA, `6.8.0-147.147` | arm64, amd64 | QEMU TCG | middle kernel |
 | D | Debian 13, `6.12.113-1` | arm64, amd64 | QEMU TCG | recent LTS kernel |
+| E | Ubuntu 24.04 runner image, `6.17.0-1022-azure` | amd64, arm64 | GitHub-hosted runners (virtual machines on real CPUs, no emulation); the privileged tests run directly on the runner | newest kernel; the only runs on non-emulated amd64 |
 
 The QEMU runs boot the kernel with an Ubuntu 22.04 userland and the `/init` of the test runner (`tests/vm/`); the
 kernel decides about the verifier, CO-RE relocations against its BTF, tracepoint contexts and the JIT, only the CPU is
@@ -137,8 +139,10 @@ offsets come from CO-RE relocations against the BTF of the running kernel, not f
 
 ## Not tested
 
-- **Real amd64 hardware.** amd64 ran only under QEMU emulation (the Docker host is an arm64 Mac without KVM). The
-  kernel is a real amd64 kernel, the CPU part is emulated; timing values are worthless there.
+- **Dedicated amd64 hardware.** Locally amd64 ran only under QEMU emulation (the Docker host is an arm64 Mac without
+  KVM): a real amd64 kernel on an emulated CPU, so timing values are worthless there. The GitHub-hosted amd64 runners
+  (virtual machines, kernel 6.17) ran the functional suites on real CPUs; no timing or load measurements were taken on
+  them.
 - **Other kernel versions and vendors** than 5.15.0-198 (Ubuntu), 6.8.0-147 (Ubuntu), 6.12.113 (Debian) and
   6.12.54-linuxkit. In particular not: RHEL/Alma/Rocky (4.18/5.14/6.x with backports), SLES, Amazon Linux, Android and
   all kernels between the tested versions. Kernels with other configurations (for example `PREEMPT_RT`, other

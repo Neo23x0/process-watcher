@@ -458,7 +458,13 @@ func TestWithoutPrivilegesTheAgentRefusesWithExitCode3(t *testing.T) {
 	if err := os.Chmod(dir, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	a := &agent{t: t, dir: dir, stderr: &syncBuf{}}
+	// The agent binary may sit where the unprivileged user cannot reach it (a home directory with
+	// mode 0750, as on the GitHub runners): start a copy from the directory made for that user.
+	bin := filepath.Join(dir, "process-watcher")
+	if err := copyExecutable(agentBin, bin); err != nil {
+		t.Fatal(err)
+	}
+	a := &agent{t: t, dir: dir, bin: bin, stderr: &syncBuf{}}
 	a.launch([]string{"--watch-image-contains", "x", "--log-file", filepath.Join(dir, "e.jsonl")}, &syscall.Credential{Uid: 65534, Gid: 65534})
 	select {
 	case <-a.done:

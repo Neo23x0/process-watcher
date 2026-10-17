@@ -292,10 +292,23 @@ func (c agentCfg) render(logPath string) string {
 	return b.String()
 }
 
+// copyExecutable copies the program src to dst so that every user can run it.
+func copyExecutable(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(dst, data, 0o755); err != nil {
+		return err
+	}
+	return os.Chmod(dst, 0o755) // the umask may have narrowed the mode
+}
+
 // agent is a running agent process.
 type agent struct {
 	t       *testing.T
 	cmd     *exec.Cmd
+	bin     string // the program to start; empty: agentBin
 	dir     string
 	LogPath string
 	CfgPath string
@@ -329,7 +342,11 @@ func startAgent(t *testing.T, cfg agentCfg) *agent {
 }
 
 func (a *agent) launch(args []string, cred *syscall.Credential) {
-	a.cmd = exec.Command(agentBin, args...)
+	bin := a.bin
+	if bin == "" {
+		bin = agentBin
+	}
+	a.cmd = exec.Command(bin, args...)
 	a.cmd.Stderr = a.stderr
 	if cred != nil {
 		a.cmd.SysProcAttr = &syscall.SysProcAttr{Credential: cred}
