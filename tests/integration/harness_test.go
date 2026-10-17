@@ -309,6 +309,7 @@ type agent struct {
 	t       *testing.T
 	cmd     *exec.Cmd
 	bin     string // the program to start; empty: agentBin
+	cwd     string // its working directory; empty: that of the test
 	dir     string
 	LogPath string
 	CfgPath string
@@ -347,6 +348,7 @@ func (a *agent) launch(args []string, cred *syscall.Credential) {
 		bin = agentBin
 	}
 	a.cmd = exec.Command(bin, args...)
+	a.cmd.Dir = a.cwd
 	a.cmd.Stderr = a.stderr
 	if cred != nil {
 		a.cmd.SysProcAttr = &syscall.SysProcAttr{Credential: cred}
