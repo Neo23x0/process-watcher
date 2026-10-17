@@ -2,8 +2,9 @@
 #
 # Edit the watch list, then: systemctl restart process-watcher
 # Every key and its default is documented in examples/process-watcher.full.yaml
-# and in the README. Argument capture is off because arguments can contain
-# credentials; enable it only when you need it (capture.argv: true).
+# (shipped as process-watcher.yaml in the release archive) and in the README.
+# Argument capture is off because arguments can contain credentials; enable it
+# only when you need it (capture.argv: true).
 config_version: 1
 
 watch:

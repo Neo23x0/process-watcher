@@ -111,9 +111,10 @@ bench-docker:
 		-e PW_AGENT_BIN=/work/process-watcher -e PW_E2E_PERF=1 -e PW_E2E_REPORT_DIR=/work/report $(GO_IMAGE) \
 		./e2e.test -test.v -test.run 'MeasureResources|KillReactionLatency' -test.timeout 1800s
 
-# The release archives (a static binary, the example configuration and the license per
-# architecture, plus SHA256SUMS) exactly as the release workflow builds them:
-#   make release-archives VERSION=v0.1.0
+# The release archives (per architecture a static binary, the example configuration,
+# the license and the systemd unit with its install script, under a versioned and an
+# unversioned name, plus SHA256SUMS) exactly as the release workflow builds them:
+#   make release-archives VERSION=v0.1.1
 # The same version, source and Go toolchain give byte-identical archives.
 release-archives:
 	@case "$(VERSION)" in v[0-9]*) ;; *) echo "set VERSION=vMAJOR.MINOR.PATCH, for example: make release-archives VERSION=v0.1.0"; exit 2 ;; esac

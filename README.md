@@ -16,13 +16,13 @@ processes with a targeted `SIGKILL` ([Kill rules](#kill-rules)).
 
 ## Quick start
 
-**1. Download and unpack** (use `arm64` instead of `amd64` on ARM machines; the current version is on the
-[releases page](https://github.com/Neo23x0/process-watcher/releases)):
+**1. Download and unpack** the latest [release](https://github.com/Neo23x0/process-watcher/releases) (`amd64` or `arm64`,
+detected from your machine):
 
 ```bash
-VERSION=v0.1.0; ARCH=amd64
-curl -fsSLO https://github.com/Neo23x0/process-watcher/releases/download/$VERSION/process-watcher_${VERSION}_linux_${ARCH}.tar.gz
-tar xzf process-watcher_${VERSION}_linux_${ARCH}.tar.gz && cd process-watcher_${VERSION}_linux_${ARCH}
+ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
+curl -fsSLO https://github.com/Neo23x0/process-watcher/releases/latest/download/process-watcher_linux_${ARCH}.tar.gz
+tar xzf process-watcher_linux_${ARCH}.tar.gz && cd process-watcher_linux_${ARCH}
 ```
 
 **2. Run it** against the service you want to watch. It needs root and Linux 5.15 or newer with BTF;
@@ -82,27 +82,32 @@ programs and runs a probe process of its own. Tested kernels: [docs/compatibilit
 ### Verify the download
 
 ```bash
-curl -fsSLO https://github.com/Neo23x0/process-watcher/releases/download/$VERSION/SHA256SUMS
+# in the directory the archive was downloaded to
+curl -fsSLO https://github.com/Neo23x0/process-watcher/releases/latest/download/SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
-gh attestation verify process-watcher_${VERSION}_linux_${ARCH}.tar.gz --repo Neo23x0/process-watcher   # build provenance
+gh attestation verify process-watcher_linux_${ARCH}.tar.gz --repo Neo23x0/process-watcher   # build provenance
 ```
 
-Every archive holds exactly three files: the **single static binary** (eBPF programs embedded; nothing else is needed
-at run time), the commented example configuration `process-watcher.yaml` and the `LICENSE`. Only `amd64` and `arm64`
-are provided: the eBPF collector assumes 64-bit kernel pointers, so 32-bit kernels (x86, ARM) are not supported.
+Every archive holds the **single static binary** (eBPF programs embedded; nothing else is needed at run time), the
+commented example configuration `process-watcher.yaml`, the `LICENSE` and, in `packaging/`, the systemd unit with the
+script that installs it. Each one is published twice with the same contents: `process-watcher_linux_<arch>.tar.gz`
+(the same name in every release, which is what `releases/latest/download/` needs) and
+`process-watcher_<version>_linux_<arch>.tar.gz` (to pin a version, for example `v0.1.1`). Only `amd64` and `arm64` are
+provided: the eBPF collector assumes 64-bit kernel pointers, so 32-bit kernels (x86, ARM) are not supported.
 
 ### As a systemd service
 
+From the unpacked archive:
+
 ```bash
-sudo ./packaging/install.sh ./process-watcher    # the binary from the archive, or ./dist/process-watcher-linux-<arch>
+sudo ./packaging/install.sh ./process-watcher    # binary, configuration and unit; starts nothing
 sudoedit /etc/process-watcher/config.yaml        # adjust the watch list
 sudo process-watcher doctor
 sudo systemctl enable --now process-watcher
 ```
 
-`install.sh` and the unit are in `packaging/` of this repository (not in the release archive: clone the repository or
-copy that directory); details and the reasons for the unit's settings: [packaging/INSTALL.md](packaging/INSTALL.md).
-Without systemd, copy the binary and start it with root privileges.
+Details, installing from a clone of the repository and the reasons for the unit's settings:
+[packaging/INSTALL.md](packaging/INSTALL.md). Without systemd, copy the binary and start it with root privileges.
 
 ## Usage examples
 
