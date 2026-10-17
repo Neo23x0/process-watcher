@@ -1,0 +1,56 @@
+# Every operative key with its built-in default (except watch.image_contains,
+# which has no default: a run needs at least one pattern, "nginx" is only an
+# example). Relative paths refer to the working directory of the invocation.
+config_version: 1
+
+watch:
+  image_contains: ["nginx"]   # literal substrings of the executed file name, OR-combined
+  ignore_case: false          # ASCII-only folding, also for exclusions
+  max_depth: 0                # 0 = unlimited; limits the emitted events only, never the tracking
+
+exclude:
+  image_contains: []          # literal substrings of the current image
+  argv_contains: []           # literal substrings of ONE argument; needs capture.argv: true
+  scope: remote               # remote: still in the local log, flagged; all: dropped everywhere
+
+capture:
+  argv: false                 # arguments may contain credentials: off by default
+
+kill:                         # optional reaction to observed descendants, see README
+  enabled: false
+  dry_run: false
+  fields: ["image"]           # image, image_path, argv (argv needs capture.argv: true)
+  strings: []
+  regex: []
+
+outputs:
+  file:
+    path: ./process-watcher.jsonl
+    rotate_size_mb: 100       # MiB (1 048 576 bytes)
+    keep_files: 5             # closed archives in addition to the active file
+    sync_interval: 1s
+  tcp:
+    address: ""               # host:port, [IPv6]:port or name:port; empty = off
+    tls: false
+    ca_file: ""               # empty = system trust store (needs tls: true)
+    server_name: ""           # needs tls: true
+  udp:
+    address: ""
+    max_bytes: 8192           # larger events are dropped for UDP only
+  webhook:
+    url: ""                   # http:// or https://, no credentials in the URL
+    token_env: ""             # NAME of an environment variable holding a bearer token
+    timeout: 10s
+
+delivery:
+  queue_size: 10000           # per remote output
+  connect_timeout: 5s
+  write_timeout: 5s
+  max_retries: 5              # tcp and webhook: at most max_retries + 1 attempts
+
+runtime:
+  ring_buffer_mb: 16          # MiB, power of two; the ring is mapped twice (RSS about 2x)
+  max_processes: 65536
+  health_interval: 60s
+  reconcile_interval: 30s
+  shutdown_timeout: 10s

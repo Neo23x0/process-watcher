@@ -1,0 +1,7 @@
+# Smallest useful configuration: watch nginx and write the local log.
+config_version: 1
+watch:
+  image_contains: ["nginx"]
+outputs:
+  file:
+    path: /var/log/process-watcher/events.jsonl

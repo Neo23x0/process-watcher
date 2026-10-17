@@ -1,0 +1,69 @@
+# Guest userland of tests/vm/run-systemd.sh: Ubuntu 22.04 with systemd 249, the
+# oldest systemd the product supports (22.04 is the oldest Ubuntu whose GA
+# kernel, 5.15, meets the kernel requirement). run-systemd.sh builds this once
+# per architecture, exports the image and turns it into the initramfs archive
+# (container/build-rootfs.sh) that the VM boots with systemd as PID 1.
+#
+#   docker build --platform linux/<arch> --build-arg BASE=<ubuntu image by digest> - < Dockerfile.systemd
+#
+# Reproducibility: the base image is pinned by digest (run-systemd.sh passes
+# the same per-architecture digests as run.sh) and the packages come from a
+# dated snapshot of the Ubuntu archive, over HTTPS only (plain HTTP is blocked
+# from containers on Docker Desktop). One snapshot URL serves amd64 and arm64.
+# The systemd version is pinned explicitly, so that moving the snapshot to a
+# newer systemd fails the build loudly instead of silently changing what is
+# tested.
+ARG BASE=ubuntu:22.04
+FROM ${BASE}
+
+ARG SNAPSHOT=20260901T000000Z
+ARG SYSTEMD_VERSION=249.11-0ubuntu3.22
+ENV DEBIAN_FRONTEND=noninteractive
+
+# The Ubuntu image ships no CA bundle, so TLS verification is switched off for
+# the single bootstrap install of ca-certificates only. apt still verifies the
+# signed InRelease of the snapshot against ubuntu-archive-keyring, so a
+# tampered mirror cannot inject packages. Everything after that is verified.
+#
+# Packages (no recommends: no dbus, no udev, no logind sessions, no network
+# manager; systemctl and systemd-analyze talk to PID 1 over its private socket):
+#   systemd       PID 1, systemctl, journald, systemd-analyze (249 in jammy)
+#   procps        ps/pgrep and, more importantly, Ubuntu's sysctl.d hardening
+#                 files (kptr_restrict, yama ptrace_scope, ...), which
+#                 systemd-sysctl applies at boot as on a real Ubuntu host
+#   jq            the test script inspects the JSONL log with it
+#   kmod          rmmod/insmod, to prove that ProtectKernelModules= blocks them
+#   libcap2-bin   capsh/getpcaps, to decode capability sets in the test output
+RUN rm -f /etc/apt/sources.list \
+ && printf '%s\n' \
+      'Types: deb' \
+      "URIs: https://snapshot.ubuntu.com/ubuntu/${SNAPSHOT}/" \
+      'Suites: jammy jammy-updates jammy-security' \
+      'Components: main universe' \
+      'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
+      > /etc/apt/sources.list.d/ubuntu.sources \
+ && apt-get -o Acquire::https::Verify-Peer=false update \
+ && apt-get -o Acquire::https::Verify-Peer=false install -y --no-install-recommends ca-certificates \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+      systemd=${SYSTEMD_VERSION} jq kmod procps libcap2-bin \
+ && systemctl --version | head -n 1 \
+ && rm -rf /var/lib/apt/lists/*
+
+# Tailoring for a VM without disk, network, consoles or users:
+#  - a fixed machine id avoids the "first boot" work of PID 1 (preset-all, ...)
+#  - multi-user.target is the default target
+#  - units that do nothing useful here, or that would fight over the serial
+#    console, are masked (this is not hardening of the product, only a quieter,
+#    faster test guest)
+RUN printf '%s\n' 0123456789abcdef0123456789abcdef > /etc/machine-id \
+ && systemctl --root=/ set-default multi-user.target \
+ && systemctl --root=/ mask \
+      getty.target getty@.service serial-getty@.service console-getty.service container-getty@.service \
+      systemd-remount-fs.service systemd-update-utmp.service systemd-update-utmp-runlevel.service \
+      systemd-random-seed.service systemd-resolved.service systemd-timesyncd.service \
+      systemd-networkd.service systemd-networkd.socket systemd-networkd-wait-online.service \
+      systemd-logind.service systemd-hwdb-update.service systemd-binfmt.service \
+      proc-sys-fs-binfmt_misc.automount proc-sys-fs-binfmt_misc.mount \
+      apt-daily.timer apt-daily-upgrade.timer e2scrub_all.timer fstrim.timer motd-news.timer \
+      dpkg-db-backup.timer logrotate.timer man-db.timer

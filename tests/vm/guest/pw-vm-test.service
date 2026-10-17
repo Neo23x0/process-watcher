@@ -1,0 +1,20 @@
+# Runs the systemd service test of tests/vm/run-systemd.sh inside the guest. The
+# script prints PASS/FAIL lines and the PW-VM-EXIT=<status> marker to the
+# console and powers the VM off itself.
+[Unit]
+Description=process-watcher systemd service test (tests/vm)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /pwtest/systemd-test.sh
+StandardInput=null
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/console
+TTYReset=no
+TTYVHangup=no
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

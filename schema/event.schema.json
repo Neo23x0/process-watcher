@@ -1,0 +1,539 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Neo23x0/process-watcher/schema/event.schema.json",
+  "title": "process-watcher event, schema_version 1",
+  "description": "One JSONL line written by process-watcher. This schema is the binding contract of schema_version 1: additive changes (new optional fields) keep the version, anything else raises it. Nanosecond values are decimal strings so receivers lose no precision. Fields that could not be determined are null and explained in data_quality.missing_fields.",
+  "type": "object",
+  "required": [
+    "schema_version", "event_id", "agent_instance_id", "sequence", "event_type", "timestamp",
+    "observed_at", "boot_time_ns", "host", "source", "process", "parent", "root", "lineage",
+    "filter", "data_quality", "details"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "event_id": {
+      "description": "UUID, identical for every output and every retry of the same event.",
+      "$ref": "#/$defs/uuid"
+    },
+    "agent_instance_id": { "description": "UUID of this run of the collector.", "$ref": "#/$defs/uuid" },
+    "sequence": {
+      "description": "Strictly increasing within one run in emission order. Gaps are possible (events suppressed by exclusions with scope all, events not delivered to an output).",
+      "type": "integer",
+      "minimum": 1
+    },
+    "event_type": {
+      "enum": [
+        "process.discovered", "process.fork", "process.exec", "process.exit",
+        "agent.started", "agent.ready", "agent.health", "agent.gap", "agent.stopped",
+        "response.kill_requested", "response.kill_result"
+      ]
+    },
+    "timestamp": {
+      "description": "Event time in UTC with nanosecond resolution. For process.discovered this is the time the process was discovered, not a fork time. Derived from boot_time_ns by sampling CLOCK_REALTIME and CLOCK_BOOTTIME together at processing time; ordering must use boot_time_ns and sequence, never the wall clock.",
+      "$ref": "#/$defs/utc_time"
+    },
+    "observed_at": { "description": "When the agent processed the event, UTC.", "$ref": "#/$defs/utc_time" },
+    "boot_time_ns": {
+      "description": "Kernel event time as CLOCK_BOOTTIME nanoseconds (includes suspend). Null for messages created by the agent itself.",
+      "oneOf": [ { "$ref": "#/$defs/ns" }, { "type": "null" } ]
+    },
+    "host": {
+      "type": "object",
+      "required": ["hostname", "boot_id"],
+      "additionalProperties": false,
+      "properties": {
+        "hostname": { "type": "string" },
+        "boot_id": { "$ref": "#/$defs/uuid" }
+      }
+    },
+    "source": { "enum": ["ebpf", "snapshot", "agent"] },
+    "process": { "oneOf": [ { "$ref": "#/$defs/process" }, { "type": "null" } ] },
+    "parent": { "oneOf": [ { "$ref": "#/$defs/parent" }, { "type": "null" } ] },
+    "root": { "oneOf": [ { "$ref": "#/$defs/root" }, { "type": "null" } ] },
+    "lineage": { "oneOf": [ { "$ref": "#/$defs/lineage" }, { "type": "null" } ] },
+    "filter": { "$ref": "#/$defs/filter" },
+    "data_quality": { "$ref": "#/$defs/data_quality" },
+    "details": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "event_type": { "enum": ["process.discovered", "process.fork", "process.exec", "process.exit"] } } },
+      "then": {
+        "properties": {
+          "boot_time_ns": { "$ref": "#/$defs/ns" },
+          "source": { "enum": ["ebpf", "snapshot"] },
+          "process": { "$ref": "#/$defs/process" },
+          "root": { "$ref": "#/$defs/root" },
+          "lineage": { "$ref": "#/$defs/lineage" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "process.discovered" } } },
+      "then": { "properties": { "source": { "const": "snapshot" }, "details": { "$ref": "#/$defs/details_discovered" } } }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "process.fork" } } },
+      "then": { "properties": { "source": { "const": "ebpf" }, "details": { "$ref": "#/$defs/details_fork" } } }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "process.exec" } } },
+      "then": { "properties": { "source": { "const": "ebpf" }, "details": { "$ref": "#/$defs/details_exec" } } }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "process.exit" } } },
+      "then": { "properties": { "details": { "$ref": "#/$defs/details_exit" } } }
+    },
+    {
+      "if": { "properties": { "event_type": { "enum": ["agent.started", "agent.ready", "agent.health", "agent.gap", "agent.stopped"] } } },
+      "then": {
+        "properties": {
+          "source": { "const": "agent" },
+          "boot_time_ns": { "type": "null" },
+          "process": { "type": "null" },
+          "parent": { "type": "null" },
+          "root": { "type": "null" },
+          "lineage": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "agent.started" } } },
+      "then": { "properties": { "details": { "$ref": "#/$defs/details_started" } } }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "agent.ready" } } },
+      "then": { "properties": { "details": { "$ref": "#/$defs/details_ready" } } }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "agent.health" } } },
+      "then": { "properties": { "details": { "$ref": "#/$defs/details_health" } } }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "agent.gap" } } },
+      "then": { "properties": { "details": { "$ref": "#/$defs/details_gap" } } }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "agent.stopped" } } },
+      "then": { "properties": { "details": { "$ref": "#/$defs/details_stopped" } } }
+    },
+    {
+      "if": { "properties": { "event_type": { "enum": ["response.kill_requested", "response.kill_result"] } } },
+      "then": {
+        "properties": {
+          "source": { "const": "agent" },
+          "boot_time_ns": { "type": "null" },
+          "process": { "$ref": "#/$defs/process" },
+          "root": { "$ref": "#/$defs/root" },
+          "lineage": { "$ref": "#/$defs/lineage" },
+          "details": { "$ref": "#/$defs/details_kill" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "response.kill_requested" } } },
+      "then": { "properties": { "details": { "properties": { "outcome": { "const": "pending" } } } } }
+    },
+    {
+      "if": { "properties": { "event_type": { "const": "response.kill_result" } } },
+      "then": { "properties": { "details": { "properties": { "outcome": { "enum": ["dry_run", "signal_sent", "already_exited", "permission_denied", "skipped", "error"] } } } } }
+    }
+  ],
+  "$defs": {
+    "uuid": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" },
+    "utc_time": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{9}Z$" },
+    "ns": { "type": "string", "pattern": "^[0-9]+$" },
+    "nullable_string": { "oneOf": [ { "type": "string" }, { "type": "null" } ] },
+    "process_id": {
+      "description": "boot_id:tgid:start_boot_ns. A pid alone is never an identity; the start time is read from the same kernel field by the live hooks and the snapshot.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9]+:[0-9]+$"
+    },
+    "process": {
+      "type": "object",
+      "required": ["process_id", "pid", "start_boot_ns", "image", "image_state", "image_path", "comm", "uid", "euid", "gid", "argv", "argv_state"],
+      "additionalProperties": false,
+      "properties": {
+        "process_id": { "$ref": "#/$defs/process_id" },
+        "pid": { "description": "Host thread group id (a process, never a thread).", "type": "integer", "minimum": 0 },
+        "start_boot_ns": { "$ref": "#/$defs/ns" },
+        "image": { "description": "File name of the executed program (the interpreter for scripts), not argv[0]; null if the kernel could not read it.", "$ref": "#/$defs/nullable_string" },
+        "image_state": { "enum": ["inherited", "executed", "snapshot"] },
+        "image_path": { "description": "Absolute path of the executed file relative to the mount namespace root, resolved symlinks; null if unknown. A cut path keeps its tail and is listed in data_quality.truncated_fields.", "$ref": "#/$defs/nullable_string" },
+        "image_deleted": { "description": "Present and true when the executable was unlinked or is a memfd file.", "type": "boolean" },
+        "comm": { "$ref": "#/$defs/nullable_string" },
+        "uid": { "type": "integer", "minimum": 0 },
+        "euid": { "type": "integer", "minimum": 0 },
+        "gid": { "type": "integer", "minimum": 0 },
+        "argv": {
+          "description": "One element per argument, never joined into a shell command. Null when capture.argv is off or the value is unavailable (see data_quality). At most 32 arguments and 4096 raw bytes; a partially captured last argument is never part of the list.",
+          "oneOf": [ { "type": "array", "items": { "type": "string" }, "maxItems": 32 }, { "type": "null" } ]
+        },
+        "argv_state": { "oneOf": [ { "enum": ["inherited", "executed", "snapshot"] }, { "type": "null" } ] }
+      }
+    },
+    "parent": {
+      "description": "Stored metadata excerpt of the creating process (fork), of the current parent (snapshot) or of the kernel's real parent at the exec of a process that was not tracked.",
+      "type": "object",
+      "required": ["process_id", "pid", "image", "relationship_source"],
+      "additionalProperties": false,
+      "properties": {
+        "process_id": { "$ref": "#/$defs/process_id" },
+        "pid": { "type": "integer", "minimum": 0 },
+        "image": { "$ref": "#/$defs/nullable_string" },
+        "image_path": { "type": "string" },
+        "relationship_source": { "enum": ["fork", "snapshot_ppid", "exec_real_parent"] }
+      }
+    },
+    "root": {
+      "description": "The process that caused the tree to be observed, with the image it had when it was admitted (never overwritten by a later exec).",
+      "type": "object",
+      "required": ["process_id", "pid", "image"],
+      "additionalProperties": false,
+      "properties": {
+        "process_id": { "$ref": "#/$defs/process_id" },
+        "pid": { "type": "integer", "minimum": 0 },
+        "image": { "$ref": "#/$defs/nullable_string" }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "required": ["role", "depth", "ancestors", "ancestors_truncated", "complete"],
+      "additionalProperties": false,
+      "properties": {
+        "role": { "enum": ["root", "descendant"] },
+        "depth": { "description": "Real depth, root = 0; not limited by the serialization limit.", "type": "integer", "minimum": 0 },
+        "ancestors": {
+          "description": "process_ids from the root to the direct parent; at most 64 entries. When shortened the root and the nearest parents are kept.",
+          "type": "array", "items": { "$ref": "#/$defs/process_id" }, "maxItems": 64
+        },
+        "ancestors_truncated": { "type": "boolean" },
+        "complete": { "description": "false when the ancestry is not backed by observed records (after a loss, or when the parent of a root is unknown).", "type": "boolean" }
+      }
+    },
+    "filter": {
+      "type": "object",
+      "required": ["excluded", "matches", "suppressed_outputs"],
+      "additionalProperties": false,
+      "properties": {
+        "excluded": { "type": "boolean" },
+        "matches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["field", "value"],
+            "additionalProperties": false,
+            "properties": {
+              "field": { "enum": ["image", "argv"] },
+              "value": { "description": "The configured exclusion string.", "type": "string" },
+              "index": { "description": "Argument index for field argv.", "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "suppressed_outputs": { "type": "array", "items": { "enum": ["tcp", "udp", "webhook"] }, "uniqueItems": true }
+      }
+    },
+    "data_quality": {
+      "type": "object",
+      "required": ["missing_fields", "truncated_fields", "sanitized_fields", "collection_gap"],
+      "additionalProperties": false,
+      "properties": {
+        "missing_fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["field", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "field": { "type": "string" },
+              "reason": { "enum": ["kernel_unavailable", "proc_unavailable", "process_exited", "identity_mismatch", "not_captured", "not_observed"] }
+            }
+          }
+        },
+        "truncated_fields": { "type": "array", "items": { "type": "string" } },
+        "sanitized_fields": { "description": "Fields in which invalid UTF-8 bytes were replaced with U+FFFD.", "type": "array", "items": { "type": "string" } },
+        "collection_gap": { "type": "boolean" }
+      }
+    },
+
+    "details_discovered": {
+      "type": "object",
+      "required": ["discovery", "visit_boot_ns", "exec_index"],
+      "additionalProperties": false,
+      "properties": {
+        "discovery": { "enum": ["startup", "reconcile"] },
+        "visit_boot_ns": { "$ref": "#/$defs/ns" },
+        "exec_index": { "const": 0 }
+      }
+    },
+    "details_fork": {
+      "type": "object",
+      "required": ["creator_tid"],
+      "additionalProperties": false,
+      "properties": { "creator_tid": { "type": "integer", "minimum": 0 } }
+    },
+    "details_exec": {
+      "type": "object",
+      "required": ["exec_index", "exec_filename", "previous_image", "thread_exec"],
+      "additionalProperties": false,
+      "properties": {
+        "exec_index": { "description": "Successful execs observed for this instance, from 1.", "type": "integer", "minimum": 1 },
+        "exec_filename": { "description": "Path as requested by the caller of execve (for a script the script's path).", "$ref": "#/$defs/nullable_string" },
+        "previous_image": { "$ref": "#/$defs/nullable_string" },
+        "thread_exec": { "type": "boolean" }
+      }
+    },
+    "details_exit": {
+      "type": "object",
+      "required": ["exit_code", "signal", "core_dumped", "duration_ns", "exit_source", "response_action_id"],
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": { "oneOf": [ { "type": "integer", "minimum": 0, "maximum": 255 }, { "type": "null" } ] },
+        "signal": { "oneOf": [ { "type": "integer", "minimum": 1, "maximum": 127 }, { "type": "null" } ] },
+        "core_dumped": { "oneOf": [ { "type": "boolean" }, { "type": "null" } ] },
+        "duration_ns": { "oneOf": [ { "$ref": "#/$defs/ns" }, { "type": "null" } ] },
+        "exit_source": { "description": "kernel: observed; inferred: found gone by a reconciliation, nothing about the exit is known.", "enum": ["kernel", "inferred"] },
+        "response_action_id": { "description": "Correlates the exit with a kill action for this instance; a correlation, not a causal claim.", "oneOf": [ { "$ref": "#/$defs/uuid" }, { "type": "null" } ] }
+      }
+    },
+
+    "lost_counts": {
+      "type": "object",
+      "required": ["fork", "exec", "exit"],
+      "additionalProperties": false,
+      "properties": {
+        "fork": { "type": "integer", "minimum": 0 },
+        "exec": { "type": "integer", "minimum": 0 },
+        "exit": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "details_started": {
+      "type": "object",
+      "required": ["version", "pid", "kernel", "arch", "phase", "complete_capture", "hooks_active_boot_ns", "history_before_hooks", "config_source", "watch_image_contains", "capture_argv", "outputs", "kill", "log_repair"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string" },
+        "pid": { "type": "integer" },
+        "kernel": { "type": "string" },
+        "arch": { "enum": ["amd64", "arm64"] },
+        "phase": { "const": "initializing" },
+        "complete_capture": { "const": false },
+        "hooks_active_boot_ns": { "$ref": "#/$defs/ns" },
+        "history_before_hooks": { "const": "unknown" },
+        "config_source": { "type": "string" },
+        "watch_image_contains": { "type": "array", "items": { "type": "string" } },
+        "capture_argv": { "type": "boolean" },
+        "outputs": { "type": "array", "items": { "enum": ["file", "tcp", "udp", "webhook"] } },
+        "kill": {
+          "type": "object",
+          "required": ["enabled", "dry_run", "fields", "rules"],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" }, "dry_run": { "type": "boolean" },
+            "fields": { "type": "array", "items": { "enum": ["image", "image_path", "argv"] } },
+            "rules": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "log_repair": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "object", "required": ["repaired", "bytes", "saved_as"], "additionalProperties": false,
+              "properties": { "repaired": { "const": true }, "bytes": { "type": "integer", "minimum": 0 }, "saved_as": { "type": "string" } } }
+          ]
+        }
+      }
+    },
+    "details_ready": {
+      "type": "object",
+      "required": ["observing_since_boot_ns", "snapshot_start_boot_ns", "snapshot_end_boot_ns", "snapshot_processes", "discovered_roots", "discovered_descendants", "buffered_records", "note"],
+      "additionalProperties": false,
+      "properties": {
+        "observing_since_boot_ns": { "$ref": "#/$defs/ns" },
+        "snapshot_start_boot_ns": { "$ref": "#/$defs/ns" },
+        "snapshot_end_boot_ns": { "$ref": "#/$defs/ns" },
+        "snapshot_processes": { "type": "integer", "minimum": 0 },
+        "discovered_roots": { "type": "integer", "minimum": 0 },
+        "discovered_descendants": { "type": "integer", "minimum": 0 },
+        "buffered_records": { "type": "integer", "minimum": 0 },
+        "note": { "type": "string" }
+      }
+    },
+    "details_gap": {
+      "type": "object",
+      "required": ["cause", "lost", "lost_total", "message", "reconcile"],
+      "additionalProperties": false,
+      "properties": {
+        "cause": { "enum": ["ring_buffer_full", "process_table_full", "reconcile_failed"] },
+        "lost": { "$ref": "#/$defs/lost_counts" },
+        "lost_total": { "type": "integer", "minimum": 0 },
+        "message": { "type": "string" },
+        "reconcile": { "enum": ["scheduled", "retry_next_interval"] }
+      }
+    },
+    "tracked_stats": {
+      "type": "object",
+      "required": ["roots", "instances", "retained", "limit", "gap_open"],
+      "additionalProperties": false,
+      "properties": {
+        "roots": { "type": "integer", "minimum": 0 }, "instances": { "type": "integer", "minimum": 0 },
+        "retained": { "type": "integer", "minimum": 0 }, "limit": { "type": "integer", "minimum": 1 },
+        "gap_open": { "type": "boolean" }
+      }
+    },
+    "collector_stats": {
+      "type": "object",
+      "required": ["lost", "lost_total", "records", "thread_clones_skipped", "duplicate_exits_dropped", "path_errors", "args_errors", "ring_pending_bytes", "process_table_full", "live_table_out_of_range"],
+      "additionalProperties": false,
+      "properties": {
+        "lost": { "$ref": "#/$defs/lost_counts" },
+        "lost_total": { "type": "integer", "minimum": 0 },
+        "records": { "$ref": "#/$defs/lost_counts" },
+        "thread_clones_skipped": { "type": "integer", "minimum": 0 },
+        "duplicate_exits_dropped": { "type": "integer", "minimum": 0 },
+        "path_errors": { "type": "integer", "minimum": 0 },
+        "args_errors": { "type": "integer", "minimum": 0 },
+        "ring_pending_bytes": { "type": "integer", "minimum": 0 },
+        "process_table_full": { "type": "integer", "minimum": 0 },
+        "live_table_out_of_range": { "description": "Processes whose tgid exceeded the live table (pid_max raised at runtime); their identity cannot be verified for kill actions.", "type": "integer", "minimum": 0 }
+      }
+    },
+    "output_stats": {
+      "description": "Delivery counters of one output in the current run. For tcp and udp handed_over means handed to the transport, never acknowledged by the receiver.",
+      "type": "object",
+      "required": ["handed_over", "dropped_queue_full", "failed", "retries"],
+      "additionalProperties": false,
+      "properties": {
+        "queue_len": { "type": "integer", "minimum": 0 },
+        "handed_over": { "type": "integer", "minimum": 0 },
+        "dropped_queue_full": { "type": "integer", "minimum": 0 },
+        "dropped_too_large": { "type": "integer", "minimum": 0 },
+        "dropped_shutdown": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "retries": { "type": "integer", "minimum": 0 },
+        "lines": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "rotations": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "response_stats": {
+      "type": "object",
+      "required": ["rule_hits", "signal_attempts", "signals_accepted", "already_exited", "permission_denied", "errors", "dry_run", "skipped", "queue_len", "queue_cap", "latency_samples", "latency_avg_ns", "latency_max_ns"],
+      "additionalProperties": false,
+      "properties": {
+        "rule_hits": { "type": "integer", "minimum": 0 },
+        "signal_attempts": { "description": "Real signal attempts (pidfd_send_signal calls).", "type": "integer", "minimum": 0 },
+        "signals_accepted": { "description": "Attempts the kernel accepted. This neither proves the death of the target nor prevents side effects.", "type": "integer", "minimum": 0 },
+        "already_exited": { "type": "integer", "minimum": 0 },
+        "permission_denied": { "type": "integer", "minimum": 0 },
+        "errors": { "type": "integer", "minimum": 0 },
+        "dry_run": { "type": "integer", "minimum": 0 },
+        "skipped": {
+          "description": "Skipped actions by reason.",
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "queue_len": { "type": "integer", "minimum": 0 },
+        "queue_cap": { "type": "integer", "minimum": 1 },
+        "latency_samples": { "type": "integer", "minimum": 0 },
+        "latency_avg_ns": { "description": "Average of trigger record (kernel time) to signal attempt.", "type": "integer", "minimum": 0 },
+        "latency_max_ns": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "details_health": {
+      "type": "object",
+      "required": ["uptime_ns", "tracked", "collector", "events", "filter", "outputs", "response"],
+      "additionalProperties": false,
+      "properties": {
+        "uptime_ns": { "$ref": "#/$defs/ns" },
+        "tracked": { "$ref": "#/$defs/tracked_stats" },
+        "collector": { "$ref": "#/$defs/collector_stats" },
+        "events": { "description": "Events written to the local log by event_type in this run.", "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "filter": { "$ref": "#/$defs/filter_stats" },
+        "outputs": { "type": "object", "propertyNames": { "enum": ["file", "tcp", "udp", "webhook"] }, "additionalProperties": { "$ref": "#/$defs/output_stats" } },
+        "response": { "oneOf": [ { "type": "null" }, { "$ref": "#/$defs/response_stats" } ] }
+      }
+    },
+    "filter_stats": {
+      "description": "Exclusion and depth counters of the current run.",
+      "type": "object",
+      "required": ["excluded_remote", "excluded_all", "suppressed_by_depth"],
+      "additionalProperties": false,
+      "properties": {
+        "excluded_remote": { "type": "integer", "minimum": 0 },
+        "excluded_all": { "type": "integer", "minimum": 0 },
+        "suppressed_by_depth": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "details_stopped": {
+      "type": "object",
+      "required": ["reason", "error", "uptime_ns", "collector", "events", "filter", "outputs", "response", "undelivered_at_shutdown"],
+      "additionalProperties": false,
+      "properties": {
+        "reason": { "enum": ["signal", "fatal_error"] },
+        "error": { "$ref": "#/$defs/nullable_string" },
+        "uptime_ns": { "$ref": "#/$defs/ns" },
+        "collector": { "$ref": "#/$defs/collector_stats" },
+        "events": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "filter": { "$ref": "#/$defs/filter_stats" },
+        "outputs": { "type": "object", "propertyNames": { "enum": ["file", "tcp", "udp", "webhook"] }, "additionalProperties": { "$ref": "#/$defs/output_stats" } },
+        "response": { "oneOf": [ { "type": "null" }, { "$ref": "#/$defs/response_stats" } ] },
+        "undelivered_at_shutdown": {
+          "description": "Per output the accepted events that were not delivered when the shutdown timeout ended; ring_buffer_bytes are kernel records that were not processed.",
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+
+    "rule_hit": {
+      "type": "object",
+      "required": ["ref", "type", "pattern", "field"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": { "description": "Stable reference to the configured rule, e.g. kill.regex[0].", "type": "string", "pattern": "^kill\\.(strings|regex)\\[[0-9]+\\]$" },
+        "type": { "enum": ["string", "regex"] },
+        "pattern": { "type": "string" },
+        "field": { "enum": ["image", "image_path", "argv"] },
+        "arg_index": { "description": "Argument index for field argv.", "type": "integer", "minimum": 0 }
+      }
+    },
+    "details_kill": {
+      "description": "Audit of a kill decision. response.kill_requested (outcome pending) is written locally before the signal attempt; response.kill_result follows with the outcome. A kill_result without a preceding kill_requested only exists for the skip reason lineage_unconfirmed. signal_sent means only that the kernel accepted the signal.",
+      "type": "object",
+      "required": ["action_id", "trigger_event_id", "trigger_event_type", "action", "signal", "dry_run", "exec_index", "rules", "outcome", "reason", "error", "trigger_boot_ns", "decided_at", "decided_boot_ns", "signal_attempted_at", "signal_attempt_boot_ns", "decision_latency_ns", "attempt_latency_ns"],
+      "additionalProperties": false,
+      "properties": {
+        "action_id": { "$ref": "#/$defs/uuid" },
+        "trigger_event_id": { "description": "event_id of the process event that caused the decision; that event may be suppressed from the output by exclusions or the depth limit.", "$ref": "#/$defs/uuid" },
+        "trigger_event_type": { "enum": ["process.discovered", "process.fork", "process.exec"] },
+        "action": { "const": "kill" },
+        "signal": { "const": "SIGKILL" },
+        "dry_run": { "type": "boolean" },
+        "exec_index": { "description": "0 for a snapshot or a fork before the first observed exec.", "type": "integer", "minimum": 0 },
+        "rules": { "type": "array", "items": { "$ref": "#/$defs/rule_hit" }, "minItems": 1 },
+        "outcome": { "enum": ["pending", "dry_run", "signal_sent", "already_exited", "permission_denied", "skipped", "error"] },
+        "reason": {
+          "oneOf": [
+            { "type": "null" },
+            { "enum": ["identity_unverified", "identity_mismatch", "match_no_longer_verified", "action_queue_full", "shutdown", "lineage_unconfirmed", "actions_stopped", "already_attempted"] }
+          ]
+        },
+        "error": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "object", "required": ["errno", "code", "message", "op"], "additionalProperties": false,
+              "properties": { "errno": { "type": "string" }, "code": { "type": "integer" }, "message": { "type": "string" }, "op": { "type": "string" } } }
+          ]
+        },
+        "trigger_boot_ns": { "$ref": "#/$defs/ns" },
+        "decided_at": { "$ref": "#/$defs/utc_time" },
+        "decided_boot_ns": { "$ref": "#/$defs/ns" },
+        "signal_attempted_at": { "oneOf": [ { "$ref": "#/$defs/utc_time" }, { "type": "null" } ] },
+        "signal_attempt_boot_ns": { "oneOf": [ { "$ref": "#/$defs/ns" }, { "type": "null" } ] },
+        "decision_latency_ns": { "description": "Trigger record to decision; may be negative by a few microseconds because both clocks are sampled independently.", "type": "string", "pattern": "^-?[0-9]+$" },
+        "attempt_latency_ns": { "oneOf": [ { "type": "string", "pattern": "^-?[0-9]+$" }, { "type": "null" } ] }
+      }
+    }
+  }
+}

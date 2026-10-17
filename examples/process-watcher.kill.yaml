@@ -1,0 +1,21 @@
+# Observe nginx and kill matching descendants with SIGKILL (a reaction AFTER
+# detection, not a preventive block). Try it with dry_run: true first.
+config_version: 1
+watch:
+  image_contains: ["nginx"]
+
+capture:
+  argv: true                  # required because fields contains argv
+
+kill:
+  enabled: true
+  dry_run: false
+  fields: ["image", "argv"]
+  strings:
+    - demo-long-running-helper
+  regex:
+    - '^(useradd|usermod)$'
+
+outputs:
+  file:
+    path: /var/log/process-watcher/events.jsonl

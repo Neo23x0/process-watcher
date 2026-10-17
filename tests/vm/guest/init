@@ -1,0 +1,126 @@
+#!/bin/sh
+# PID 1 of the process-watcher test VM. Plain POSIX sh (dash from the Ubuntu
+# rootfs). It is copied into a small initramfs overlay by container/boot.sh,
+# together with /pwtest/env.sh, which defines PW_BIN (the test binary) and the
+# positional parameters (its arguments).
+#
+# Contract with tests/vm/run.sh: the last line starting with PW-VM-EXIT= carries
+# the exit status of the binary. Everything else is informational.
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+HOME=/root
+export HOME
+
+say() { echo "PW-VM: $*"; }
+
+uptime_s() { read -r up _ < /proc/uptime; echo "$up"; }
+
+poweroff_vm() {
+	# QEMU runs with -no-reboot, so "reboot" ends the emulator as well. Try a
+	# clean power off first (ACPI on x86, PSCI on arm64), then a reset. If both
+	# fail PID 1 exits, the kernel panics (panic=-1) and QEMU still terminates.
+	sync
+	echo o > /proc/sysrq-trigger
+	sleep 2
+	echo b > /proc/sysrq-trigger
+	sleep 2
+	exit 1
+}
+
+# --- pseudo file systems ------------------------------------------------------
+mount -t proc proc /proc || { echo "PW-VM: cannot mount /proc"; PW_BROKEN=1; }
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts /dev/shm
+mount -t devpts devpts /dev/pts
+mount -t tmpfs -o mode=1777 tmpfs /dev/shm
+mount -t tmpfs -o mode=1777 tmpfs /tmp
+mount -t tmpfs -o mode=0755 tmpfs /run
+# Optional: missing support is not an error, only informational.
+mount -t debugfs debugfs /sys/kernel/debug 2> /dev/null
+mount -t tracefs tracefs /sys/kernel/tracing 2> /dev/null
+mount -t bpf bpf /sys/fs/bpf 2> /dev/null
+mount -t cgroup2 cgroup2 /sys/fs/cgroup 2> /dev/null
+mount -t securityfs securityfs /sys/kernel/security 2> /dev/null
+
+# Loopback: the agent end-to-end tests talk to 127.0.0.1 and ::1. The kernel
+# gives lo its addresses once IFF_UP is set, and the flags attribute is writable.
+if [ -w /sys/class/net/lo/flags ]; then
+	lo_flags=$(cat /sys/class/net/lo/flags)
+	printf '0x%x\n' $((lo_flags | 1)) > /sys/class/net/lo/flags 2> /dev/null
+fi
+
+if [ -n "${PW_BROKEN:-}" ]; then
+	echo "PW-VM-EXIT=125"
+	poweroff_vm
+fi
+
+say "init reached after $(uptime_s)s of kernel uptime"
+say "kernel: $(uname -srvm)"
+say "cpus: $(grep -c '^processor' /proc/cpuinfo), memory: $(awk '/^MemTotal:/ { printf "%d MiB", $2 / 1024 }' /proc/meminfo)"
+say "cmdline: $(cat /proc/cmdline)"
+
+if [ -e /sys/kernel/btf/vmlinux ]; then
+	say "btf: /sys/kernel/btf/vmlinux present ($(wc -c < /sys/kernel/btf/vmlinux) bytes)"
+else
+	say "btf: /sys/kernel/btf/vmlinux MISSING"
+fi
+[ -r /sys/kernel/security/lockdown ] && say "lockdown: $(cat /sys/kernel/security/lockdown)"
+[ -r /sys/class/net/lo/operstate ] && say "loopback: flags $(cat /sys/class/net/lo/flags), operstate $(cat /sys/class/net/lo/operstate)"
+for f in bpf_jit_enable bpf_jit_harden bpf_jit_kallsyms; do
+	[ -r /proc/sys/net/core/$f ] && say "sysctl net.core.$f=$(cat /proc/sys/net/core/$f)"
+done
+for f in unprivileged_bpf_disabled bpf_stats_enabled perf_event_paranoid kptr_restrict; do
+	[ -r /proc/sys/kernel/$f ] && say "sysctl kernel.$f=$(cat /proc/sys/kernel/$f)"
+done
+if [ -r /sys/kernel/tracing/events/sched/sched_process_exec/id ]; then
+	say "tracepoints: sched_process_fork/exec/exit present in tracefs"
+else
+	say "tracepoints: tracefs sched events not visible (tracefs not mounted or not built in)"
+fi
+cfg=
+if [ -r /proc/config.gz ]; then
+	zcat /proc/config.gz > /tmp/kernel.config && cfg=/tmp/kernel.config
+	cfg_src="/proc/config.gz"
+elif [ -r /pwtest/kernel.config ]; then
+	cfg=/pwtest/kernel.config
+	cfg_src="build configuration shipped with the kernel package (the kernel has no /proc/config.gz)"
+fi
+if [ -n "$cfg" ]; then
+	say "kernel config, $cfg_src:"
+	sed -n -e 's/^# \(CONFIG_[A-Za-z0-9_]*\) is not set$/\1=n/' -e '/^CONFIG_/p' "$cfg" \
+		| grep -E '^CONFIG_(BPF_SYSCALL|BPF_JIT|BPF_JIT_ALWAYS_ON|BPF_JIT_DEFAULT_ON|BPF_EVENTS|BPF_LSM|BPF_UNPRIV_DEFAULT_OFF|CGROUP_BPF|DEBUG_INFO_BTF|DEBUG_INFO_BTF_MODULES|HZ|PREEMPT_NONE|PREEMPT_VOLUNTARY|PREEMPT|PREEMPT_DYNAMIC|PREEMPT_RT|NO_HZ_IDLE|NO_HZ_FULL|TRACEPOINTS|FTRACE|KPROBES|FPROBE|ARM64_PTR_AUTH_KERNEL|ARM64_BTI_KERNEL|ARM64_PAGE_SHIFT|NR_CPUS|MODULES|SECURITY_LOCKDOWN_LSM|LOCK_DOWN_KERNEL_FORCE_NONE)=' \
+		| tr '\n' ' ' | fold -s -w 140 | sed 's/^/PW-VM:   /'
+	echo
+else
+	say "kernel config: not available (no /proc/config.gz, no config shipped with the kernel package)"
+fi
+
+# --- run the test binary --------------------------------------------------------
+ulimit -l unlimited 2> /dev/null || say "warning: cannot raise RLIMIT_MEMLOCK"
+ulimit -n 65536 2> /dev/null
+
+if ! . /pwtest/env.sh; then
+	echo "PW-VM: cannot read /pwtest/env.sh"
+	echo "PW-VM-EXIT=125"
+	poweroff_vm
+fi
+
+cd /pwtest || exit 1
+say "running: $PW_BIN $*"
+t0=$(uptime_s)
+echo "PW-VM-START"
+"$PW_BIN" "$@" < /dev/null
+rc=$?
+t1=$(uptime_s)
+echo
+say "binary exited with status $rc after $(awk -v a="$t0" -v b="$t1" 'BEGIN { printf "%.1f", b - a }')s"
+
+if [ "$rc" -ne 0 ]; then
+	say "kernel messages (warning and above):"
+	dmesg -l emerg,alert,crit,err,warn 2> /dev/null | tail -n 60 | sed 's/^/PW-VM:   /'
+fi
+
+echo "PW-VM-EXIT=$rc"
+poweroff_vm

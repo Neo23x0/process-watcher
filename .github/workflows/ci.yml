@@ -1,0 +1,116 @@
+name: CI
+
+# Every push to main and every pull request: formatting, vet, unit tests with
+# the race detector, the release build, the reproducibility of the embedded
+# eBPF object, and the privileged tests against a real kernel on native amd64
+# and arm64 runners (real eBPF programs, no mocks for the collector).
+#
+# Every action is pinned to a commit (the comment names the version);
+# Dependabot proposes updates.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Vet, unit tests and release build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt -l lists:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet (both release architectures)
+        run: |
+          go vet ./...
+          GOARCH=arm64 go vet ./...
+
+      - name: Build the agent (a few tests run it to check configuration errors)
+        run: go build -o dist/process-watcher ./cmd/process-watcher
+
+      - name: Unit tests with the race detector
+        env:
+          PW_AGENT_BIN: ${{ github.workspace }}/dist/process-watcher
+        run: go test -race -count=1 ./...
+
+      - name: The release build works and yields single static binaries
+        run: go run ./tools/release -version v0.0.0-ci -out dist/release
+
+  ebpf-object:
+    name: The embedded eBPF object is reproducible
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Regenerate the object in the pinned toolchain container
+        run: make generate
+
+      - name: The committed object is byte-identical
+        run: git diff --exit-code -- internal/collector/ebpf/pw_bpfel.go internal/collector/ebpf/pw_bpfel.o
+
+  kernel-amd64:
+    name: Kernel tests, linux/amd64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Collector, pidfd and agent end-to-end tests as root
+        run: tools/ci/kernel-tests.sh
+
+  kernel-arm64:
+    name: Kernel tests, linux/arm64
+    # GitHub-hosted arm64 runners are free for public repositories only.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Collector, pidfd and agent end-to-end tests as root
+        run: tools/ci/kernel-tests.sh
+
+  workflows:
+    name: Lint the workflows
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color

@@ -1,0 +1,4 @@
+# Kernels, downloaded .deb files, rootfs images and initramfs files are build
+# artifacts and are never committed.
+*
+!.gitignore

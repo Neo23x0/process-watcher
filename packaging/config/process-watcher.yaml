@@ -1,0 +1,16 @@
+# /etc/process-watcher/config.yaml
+#
+# Edit the watch list, then: systemctl restart process-watcher
+# Every key and its default is documented in examples/process-watcher.full.yaml
+# and in the README. Argument capture is off because arguments can contain
+# credentials; enable it only when you need it (capture.argv: true).
+config_version: 1
+
+watch:
+  # Literal substrings of the executed file name (not of the command line).
+  image_contains: ["nginx"]
+
+outputs:
+  file:
+    # /var/log/process-watcher is created with mode 0700 by the service unit.
+    path: /var/log/process-watcher/events.jsonl

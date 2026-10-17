@@ -1,0 +1,216 @@
+name: Release
+
+# Publishes a GitHub release when a version tag is pushed:
+#
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# vMAJOR.MINOR.PATCH is a release, vMAJOR.MINOR.PATCH-rc.1 (any suffix after a
+# dash) a pre-release. The tag must point at a commit of main.
+#
+# The release contains one archive per architecture (linux/amd64, linux/arm64)
+# with the single static binary, the example configuration process-watcher.yaml
+# and the LICENSE, plus SHA256SUMS. The archives are built by tools/release;
+# `make release-archives VERSION=v0.1.0` produces the same bytes locally.
+#
+# Every action is pinned to a commit (the comment names the version);
+# Dependabot proposes updates.
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify the tag and the sources
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: The tag is a version and points at a commit of main
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'
+          if ! [[ "$TAG" =~ $re ]]; then
+            echo "::error::the tag $TAG is not a version like v0.1.0 or v0.1.0-rc.1"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$(git rev-parse "$GITHUB_SHA^{commit}")" origin/main; then
+            echo "::error::the tagged commit is not on main; releases are cut from main"
+            exit 1
+          fi
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Vet and test
+        env:
+          PW_AGENT_BIN: ${{ github.workspace }}/dist/process-watcher
+        run: |
+          go vet ./...
+          go build -o dist/process-watcher ./cmd/process-watcher
+          go test -count=1 ./...
+
+      - name: The embedded eBPF object is what the C source builds
+        run: |
+          make generate
+          git diff --exit-code -- internal/collector/ebpf/pw_bpfel.go internal/collector/ebpf/pw_bpfel.o
+
+  build:
+    name: Build the archives
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Build both architectures, check that each is a single static binary, package
+        env:
+          TAG: ${{ github.ref_name }}
+        run: go run ./tools/release -version "$TAG" -out dist/release
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-archives
+          path: dist/release/*
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke-amd64:
+    name: Smoke test linux/amd64
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-archives
+          path: dist
+
+      - name: Unpack and run the shipped binary with the shipped configuration
+        env:
+          TAG: ${{ github.ref_name }}
+          ARCH: amd64
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum --check --ignore-missing SHA256SUMS
+          tar xzf "process-watcher_${TAG}_linux_${ARCH}.tar.gz"
+          dir="$PWD/process-watcher_${TAG}_linux_${ARCH}"
+          test "$(find "$dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = "LICENSE process-watcher process-watcher.yaml "
+          file "$dir/process-watcher"
+          file "$dir/process-watcher" | grep -q 'statically linked'
+          test "$("$dir/process-watcher" --version | cut -d' ' -f2)" = "$TAG"
+          # The configuration next to the binary is found from any directory.
+          cd /tmp
+          "$dir/process-watcher" check-config | tee check.out
+          grep -q "$dir/process-watcher.yaml" check.out
+          # Informational: can this binary load its eBPF programs on the kernel of this runner?
+          sudo "$dir/process-watcher" doctor || echo "::warning::doctor reported problems on this runner kernel (see the log)"
+
+  smoke-arm64:
+    name: Smoke test linux/arm64
+    needs: build
+    # GitHub-hosted arm64 runners are free for public repositories only.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-archives
+          path: dist
+
+      - name: Unpack and run the shipped binary with the shipped configuration
+        env:
+          TAG: ${{ github.ref_name }}
+          ARCH: arm64
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum --check --ignore-missing SHA256SUMS
+          tar xzf "process-watcher_${TAG}_linux_${ARCH}.tar.gz"
+          dir="$PWD/process-watcher_${TAG}_linux_${ARCH}"
+          test "$(find "$dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = "LICENSE process-watcher process-watcher.yaml "
+          file "$dir/process-watcher"
+          file "$dir/process-watcher" | grep -q 'statically linked'
+          test "$("$dir/process-watcher" --version | cut -d' ' -f2)" = "$TAG"
+          cd /tmp
+          "$dir/process-watcher" check-config | tee check.out
+          grep -q "$dir/process-watcher.yaml" check.out
+          sudo "$dir/process-watcher" doctor || echo "::warning::doctor reported problems on this runner kernel (see the log)"
+
+  release:
+    name: Publish the release
+    needs: [build, smoke-amd64, smoke-arm64]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.smoke-amd64.result == 'success' && contains(fromJSON('["success","skipped"]'), needs.smoke-arm64.result) }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write      # create the release and upload the assets
+      id-token: write      # sign the build provenance
+      attestations: write
+      artifact-metadata: write # listed by actions/attest for file attestations
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-archives
+          path: dist
+
+      - name: Attest the build provenance of the archives (public repositories)
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*.tar.gz
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cat dist/SHA256SUMS
+          prerelease=()
+          case "$TAG" in *-*) prerelease=(--prerelease) ;; esac
+          # The generated change list is a courtesy; a failure to produce it must not block the release.
+          generated="$(gh api --method POST "repos/$REPO/releases/generate-notes" -f tag_name="$TAG" --jq .body)" || {
+            echo "::warning::could not generate the change list; publishing without it"
+            generated=""
+          }
+          { sed -e "s|@TAG@|$TAG|g" -e "s|@REPO@|$REPO|g" .github/release-notes.md; printf '%s\n' "$generated"; } > notes.md
+          if gh release view "$TAG" --repo "$REPO" > /dev/null 2>&1; then
+            # A re-run after a partial failure: replace the assets of the existing release.
+            gh release upload "$TAG" --repo "$REPO" --clobber dist/*.tar.gz dist/SHA256SUMS
+          else
+            gh release create "$TAG" --repo "$REPO" --verify-tag --title "process-watcher $TAG" \
+              --notes-file notes.md "${prerelease[@]}" dist/*.tar.gz dist/SHA256SUMS
+          fi

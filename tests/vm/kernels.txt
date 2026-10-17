@@ -1,0 +1,39 @@
+# Kernel table for tests/vm/run.sh.
+#
+# One line per (kernel-id, arch). Columns, separated by blanks:
+#
+#   kernel-id  arch  package-version  kernel-URL  kernel-SHA256  [config-URL  config-SHA256]
+#
+# kernel-URL points to the linux-image .deb. run.sh downloads it over HTTPS,
+# refuses it unless the SHA-256 matches, extracts only /boot/vmlinuz-* from it
+# and caches the result under tests/vm/cache/kernels/<arch>/<kernel-id>/. No
+# kernel modules are used: the console, initramfs, BPF and BTF code is built
+# into all of these kernels.
+#
+# config-URL (optional) is a small package that carries the build configuration
+# of exactly that kernel (Ubuntu: linux-buildinfo). The kernels do not export
+# /proc/config.gz, so the guest prints the BPF/BTF/HZ facts from this copy.
+# Debian ships /boot/config-* inside the linux-image .deb itself, so Debian
+# rows need no extra columns.
+#
+# All checksums come from the Packages indexes of the archives, after the
+# InRelease signature had been verified with the distribution keyring
+# (tests/vm/container/resolve-kernel.sh does exactly that). To move a kernel id
+# to a newer package, run that script, paste the new URLs and checksums here
+# (a changed checksum invalidates the cache entry by itself).
+#
+# kernel-id    arch   version           kernel-URL ... kernel-SHA256 ... config-URL ... config-SHA256
+#
+# Ubuntu 22.04 (jammy) GA kernel: the oldest kernel the product supports.
+ubuntu-5.15    amd64  5.15.0-198.208    https://archive.ubuntu.com/ubuntu/pool/main/l/linux-signed/linux-image-5.15.0-198-generic_5.15.0-198.208_amd64.deb      f92ba2f6e717891165a1288a0c0350d0791176b19c41c180b272b305c9704cb0  https://archive.ubuntu.com/ubuntu/pool/main/l/linux/linux-buildinfo-5.15.0-198-generic_5.15.0-198.208_amd64.deb  69fa11256865999b6d27ff1b0c8a6b4c66ea61a8532e984f6cfeef082d4c9f60
+ubuntu-5.15    arm64  5.15.0-198.208    https://ports.ubuntu.com/ubuntu-ports/pool/main/l/linux-signed/linux-image-5.15.0-198-generic_5.15.0-198.208_arm64.deb  8cce210a61b28e6c374b2a0d3e782508adc4aae396e6d479710182a33cb870eb  https://ports.ubuntu.com/ubuntu-ports/pool/main/l/linux/linux-buildinfo-5.15.0-198-generic_5.15.0-198.208_arm64.deb  e1c6275065fdcf1648c85226700fd363f785761471a2123413dd5906965ef2e3
+#
+# Ubuntu 24.04 (noble) GA kernel: a newer kernel with a different verifier.
+ubuntu-6.8     amd64  6.8.0-147.147     https://archive.ubuntu.com/ubuntu/pool/main/l/linux-signed/linux-image-6.8.0-147-generic_6.8.0-147.147_amd64.deb        08432502e565a8a3b4ab13bd8b01788a0a83c9398c8a1e9350f1225991bc4fbb  https://archive.ubuntu.com/ubuntu/pool/main/l/linux/linux-buildinfo-6.8.0-147-generic_6.8.0-147.147_amd64.deb    7f6882050a5191cd9b0840c103a0f34ff0d4280bdfefcad3bd511886b15c5cba
+ubuntu-6.8     arm64  6.8.0-147.147     https://ports.ubuntu.com/ubuntu-ports/pool/main/l/linux-signed/linux-image-6.8.0-147-generic_6.8.0-147.147_arm64.deb    75159df987469ba9feb93a638a7f2a42511802fbf0f06ff891d2702bd7d3b23c  https://ports.ubuntu.com/ubuntu-ports/pool/main/l/linux/linux-buildinfo-6.8.0-147-generic_6.8.0-147.147_arm64.deb    c20634cc9df715dadb48bce8f3ca7ff20ee92fb48b1e64646aa2b965a4659e99
+#
+# Debian 13 (trixie) kernel 6.12, an upstream long-term-support series. The
+# files come from snapshot.debian.org, which keeps them permanently (the live
+# security archive drops superseded versions).
+debian-6.12    amd64  6.12.113-1        https://snapshot.debian.org/archive/debian-security/20261016T133910Z/pool/updates/main/l/linux-signed-amd64/linux-image-6.12.113+deb13-amd64_6.12.113-1_amd64.deb  a4ad0bf9f084b199dd2b12cb8a2ed918abb442da467f40b772166a267c784a5b
+debian-6.12    arm64  6.12.113-1        https://snapshot.debian.org/archive/debian-security/20261016T133910Z/pool/updates/main/l/linux-signed-arm64/linux-image-6.12.113+deb13-arm64_6.12.113-1_arm64.deb  fb1d4ff8bffc992b9b7e073f9a07d1ce378c041cfba78bb8e039c15a504b3129

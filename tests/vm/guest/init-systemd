@@ -1,0 +1,75 @@
+#!/bin/sh
+# PID 1 stage of the systemd test VM (tests/vm/run-systemd.sh). Plain POSIX sh
+# (dash from the Ubuntu rootfs). It is copied into a small initramfs overlay by
+# container/boot-systemd.sh together with /pwtest (the agent binary, packaging/,
+# the test script, /pwtest/env.sh and the unit that runs the test script).
+#
+# It prepares the little that systemd does not do itself, prints the kernel
+# facts that the test log needs, and then REPLACES ITSELF with systemd: from
+# there on systemd is PID 1, boots to multi-user.target and starts
+# pw-vm-test.service, which runs /pwtest/systemd-test.sh. That script prints
+# PW-VM-EXIT=<status> and powers the VM off (see tests/vm/README.md).
+#
+# This file is the systemd-mode counterpart of guest/init; the plain mode is
+# unchanged.
+
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+
+say() { echo "PW-VM: $*"; }
+
+uptime_s() { read -r up _ < /proc/uptime; echo "$up"; }
+
+poweroff_vm() {
+	sync
+	echo o > /proc/sysrq-trigger
+	sleep 2
+	echo b > /proc/sysrq-trigger
+	sleep 2
+	exit 1
+}
+
+# /proc, /sys and /dev only for the facts below; systemd finds them mounted and
+# mounts everything else itself (cgroup2, /run, /dev/pts, /dev/shm, tracefs,
+# bpffs, debugfs, securityfs via its own units).
+mount -t proc proc /proc || { echo "PW-VM: cannot mount /proc"; echo "PW-VM-EXIT=125"; poweroff_vm; }
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+
+say "init (systemd mode) reached after $(uptime_s)s of kernel uptime"
+say "kernel: $(uname -srvm)"
+say "cpus: $(grep -c '^processor' /proc/cpuinfo), memory: $(awk '/^MemTotal:/ { printf "%d MiB", $2 / 1024 }' /proc/meminfo)"
+say "cmdline: $(cat /proc/cmdline)"
+if [ -e /sys/kernel/btf/vmlinux ]; then
+	say "btf: /sys/kernel/btf/vmlinux present ($(wc -c < /sys/kernel/btf/vmlinux) bytes)"
+else
+	say "btf: /sys/kernel/btf/vmlinux MISSING"
+fi
+if [ -r /pwtest/kernel.config ]; then
+	say "kernel config (build configuration shipped with the kernel package):"
+	sed -n -e 's/^# \(CONFIG_[A-Za-z0-9_]*\) is not set$/\1=n/' -e '/^CONFIG_/p' /pwtest/kernel.config \
+		| grep -E '^CONFIG_(BPF_SYSCALL|BPF_JIT|BPF_JIT_ALWAYS_ON|BPF_EVENTS|CGROUP_BPF|DEBUG_INFO_BTF|SECCOMP|SECCOMP_FILTER|CGROUPS|NAMESPACES|USER_NS|PID_NS|FHANDLE|SECURITY_LOCKDOWN_LSM|SECURITY_YAMA|SECURITY_APPARMOR|DEFAULT_SECURITY_APPARMOR|SECURITY_SELINUX|HZ|PREEMPT_VOLUNTARY|NO_HZ_FULL)=' \
+		| tr '\n' ' ' | fold -s -w 140 | sed 's/^/PW-VM:   /'
+	echo
+fi
+
+# docker export leaves the container markers of the image behind; with
+# /.dockerenv present systemd would believe it runs in a container ("Detected
+# virtualization docker") and skip or alter parts of a real boot.
+rm -f /.dockerenv
+
+# The unit that runs the test script once multi-user.target is reached.
+mkdir -p /etc/systemd/system/multi-user.target.wants
+cp /pwtest/pw-vm-test.service /etc/systemd/system/pw-vm-test.service || {
+	echo "PW-VM: cannot install pw-vm-test.service"
+	echo "PW-VM-EXIT=125"
+	poweroff_vm
+}
+ln -sf ../pw-vm-test.service /etc/systemd/system/multi-user.target.wants/pw-vm-test.service
+
+say "executing systemd as PID 1 after $(uptime_s)s"
+exec /lib/systemd/systemd
+# not reached unless the exec failed
+echo "PW-VM: cannot execute /lib/systemd/systemd"
+echo "PW-VM-EXIT=125"
+poweroff_vm

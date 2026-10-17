@@ -1,0 +1,19 @@
+# Local log plus all three remote outputs at the same time.
+config_version: 1
+watch:
+  image_contains: ["nginx", "apache2"]
+exclude:
+  image_contains: ["legitimate-helper"]
+  scope: remote               # excluded events stay in the local log
+outputs:
+  file:
+    path: /var/log/process-watcher/events.jsonl
+  tcp:
+    address: collector.example.net:9000
+    tls: true
+    ca_file: /etc/process-watcher/collector-ca.pem   # PEM bundle; check-config and run read it (empty = system trust store)
+  udp:
+    address: 192.0.2.20:9001
+  webhook:
+    url: https://collector.example.net/hooks/processes
+    token_env: PROCESS_WATCHER_TOKEN
