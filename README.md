@@ -5,56 +5,91 @@
 # process-watcher
 A process monitoring tool that tries to detect exploitation
 
-A Linux agent (Go + eBPF) that finds processes by a substring of the name of their **executable image**, follows their
-**process trees** and logs process creation, successful program changes (exec) and process end as JSONL. Events go to
-a local log and, at the same time if you want, over TCP, UDP and an HTTP webhook. Building a baseline or judging what
-is an attack is left to the receiving system. Optionally the agent **reacts** to specific child processes with a
-targeted `SIGKILL` (see [Kill rules](#kill-rules)).
+**See what a service starts.** process-watcher follows a service (a web server, an application server, ...) and every
+process it creates, in real time, and logs each start, program change and exit as JSON, optionally with the command
+line. When your web server suddenly runs a shell or `curl`, you see what was started, by which process and from which
+service. It is one static binary for Linux (`amd64`, `arm64`): download, unpack, run.
 
-- Event based (eBPF: fork, successful exec, exit); `/proc` only adds metadata.
-- Recursive: all generations, also after reparenting, double forks and the end of the root.
-- One static binary per architecture (`linux/amd64`, `linux/arm64`); no compiler is needed on the target host.
-- YAML configuration with equivalent command line flags.
-- The event format is a contract: [schema/event.schema.json](schema/event.schema.json).
+It makes the activity visible; it does not judge it. Building a baseline or deciding what is an attack is left to you
+or to the system that receives the events (log file, SIEM, webhook). Optionally it can react to specific child
+processes with a targeted `SIGKILL` ([Kill rules](#kill-rules)).
+
+## Quick start
+
+**1. Download and unpack** (use `arm64` instead of `amd64` on ARM machines; the current version is on the
+[releases page](https://github.com/Neo23x0/process-watcher/releases)):
+
+```bash
+VERSION=v0.1.0; ARCH=amd64
+curl -fsSLO https://github.com/Neo23x0/process-watcher/releases/download/$VERSION/process-watcher_${VERSION}_linux_${ARCH}.tar.gz
+tar xzf process-watcher_${VERSION}_linux_${ARCH}.tar.gz && cd process-watcher_${VERSION}_linux_${ARCH}
+```
+
+**2. Run it** against the service you want to watch. It needs root and Linux 5.15 or newer with BTF;
+`sudo ./process-watcher doctor` tells you whether your host qualifies.
+
+```bash
+sudo ./process-watcher --watch-image-contains nginx --capture-argv=true
+```
+
+`nginx` is a substring of the executable name of your service (`apache2`, `php-fpm`, `java`, ...). Stop the agent with
+Ctrl-C; it writes the events to `./process-watcher.jsonl`. `--capture-argv=true` records command lines, which can
+contain secrets ([Argument capture](#argument-capture)). Prefer a file? Edit `process-watcher.yaml` next to the binary
+(it is found automatically) and run `sudo ./process-watcher`.
+
+**3. Watch what the service starts** (second terminal, same directory; `jq` makes the JSON readable):
+
+```bash
+sudo tail -f process-watcher.jsonl | jq -r '
+  select(.event_type=="process.exec" and .lineage.role=="descendant")
+  | "\(.timestamp[:19])Z  \(.root.image) > \(.process.image)  \(.process.argv // [] | join(" "))"'
+```
+
+Example: a service called `nginx` is made to run a shell and a few programs (simulated with a stand-in program):
+
+```
+2026-10-17T19:15:16Z  nginx > dash  sh -c id; uname -s
+2026-10-17T19:15:16Z  nginx > id  id
+2026-10-17T19:15:16Z  nginx > uname  uname -s
+2026-10-17T19:15:16Z  nginx > curl  curl --version
+2026-10-17T19:15:16Z  nginx > sleep  sleep 1
+```
+
+A web or application server that starts shells, download tools or interpreters (`sh`, `curl`, `wget`, `nc`, `python`,
+...) is a classic trace of a web shell or remote code execution. All generations are followed, also after the parent
+has ended. (`jq` only joins the arguments for display; the event keeps them as an array. `sh` shows up as `dash`
+because the image is the program that actually ran.)
+
+**Next:** keep it running as a [systemd service](#as-a-systemd-service) · send the events to your SIEM or log pipeline
+with `--tcp-address`, `--udp-address` or `--webhook-url` ([Outputs](#outputs)) · terminate suspicious child processes
+automatically ([Kill rules](#kill-rules)).
 
 ## Requirements
 
 | Requirement | Value |
 | --- | --- |
 | Operating system | Linux, `amd64` or `arm64` |
-| Kernel | 5.15 or newer **with BTF** (`/sys/kernel/btf/vmlinux`, `CONFIG_DEBUG_INFO_BTF=y`). The version number alone is no guarantee: at start the agent checks the functions and kernel structure fields it needs. |
-| Privileges | root, or `CAP_BPF` + `CAP_PERFMON` (+ `CAP_SYS_PTRACE` to read `/proc/<pid>/exe` of other users' processes, `CAP_KILL` for the kill feature, `CAP_SYS_RESOURCE` before kernel 5.11). Kernel lockdown mode `confidentiality` prevents operation. |
-| PID namespace | the **initial** PID namespace of the host (all PIDs are host PIDs). Running inside a container is not supported and refused. |
+| Kernel | 5.15 or newer **with BTF** (`/sys/kernel/btf/vmlinux`). The version number alone is no guarantee: at start the agent checks the functions and kernel structure fields it needs. |
+| Privileges | root, or `CAP_BPF` + `CAP_PERFMON` (+ `CAP_SYS_PTRACE` for `/proc/<pid>/exe` of other users' processes, `CAP_KILL` for the kill feature, `CAP_SYS_RESOURCE` before kernel 5.11). Kernel lockdown `confidentiality` prevents operation. |
+| PID namespace | the **initial** PID namespace of the host (all PIDs are host PIDs); running inside a container is refused. |
 
-If a requirement is missing, the agent stops with a concrete diagnosis and **exit code 3**. It never falls back to
+If a requirement is missing, the agent stops with a concrete diagnosis and **exit code 3**; it never falls back to
 polling `/proc`, which would miss short-lived processes. `sudo ./process-watcher doctor` checks everything, loads the
-programs and verifies with a probe process of its own that fork, exec and exit arrive without `/proc`. Tested kernels
-and architectures: [docs/compatibility.md](docs/compatibility.md).
+programs and runs a probe process of its own. Tested kernels: [docs/compatibility.md](docs/compatibility.md).
 
 ## Installation
 
-### From a release
-
-Every [release](https://github.com/Neo23x0/process-watcher/releases) has one archive per architecture
-(`process-watcher_<version>_linux_<arch>.tar.gz`, `amd64` and `arm64`) with exactly three files: the **single static
-binary** `process-watcher` (eBPF programs embedded; no libraries, other files or compiler needed at run time), the
-commented example configuration `process-watcher.yaml` and the `LICENSE`. `SHA256SUMS` lists the archives.
+### Verify the download
 
 ```bash
-ARCH=amd64     # or arm64
-VERSION=v0.1.0
-curl -fsSLO https://github.com/Neo23x0/process-watcher/releases/download/$VERSION/process-watcher_${VERSION}_linux_${ARCH}.tar.gz
 curl -fsSLO https://github.com/Neo23x0/process-watcher/releases/download/$VERSION/SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
-tar xzf process-watcher_${VERSION}_linux_${ARCH}.tar.gz && cd process-watcher_${VERSION}_linux_${ARCH}
-sudo ./process-watcher doctor          # kernel, BTF, privileges
-sudoedit process-watcher.yaml          # adjust watch.image_contains
-sudo ./process-watcher                 # finds process-watcher.yaml next to the binary
+gh attestation verify process-watcher_${VERSION}_linux_${ARCH}.tar.gz --repo Neo23x0/process-watcher   # build provenance
 ```
 
-`gh attestation verify <archive> --repo Neo23x0/process-watcher` shows that GitHub built an archive. Only `amd64` and
-`arm64` are provided: the eBPF collector assumes 64-bit kernel pointers, so 32-bit kernels (x86, ARM) are not
-supported (exit code 3).
+Every archive holds exactly three files: the **single static binary** (eBPF programs embedded; nothing else is needed
+at run time), the commented example configuration `process-watcher.yaml` and the `LICENSE`. Only `amd64` and `arm64`
+are provided: the eBPF collector assumes 64-bit kernel pointers, so 32-bit kernels (x86, ARM) are not supported.
 
 ### As a systemd service
 
@@ -65,18 +100,14 @@ sudo process-watcher doctor
 sudo systemctl enable --now process-watcher
 ```
 
-`install.sh` and the unit are in `packaging/`; details and the reasons for the unit's settings:
-[packaging/INSTALL.md](packaging/INSTALL.md). Without systemd, copy the binary and start it with root privileges.
-Maintainers: pushing a `vX.Y.Z` tag builds and publishes a release ([release workflow](.github/workflows/release.yml));
-`make release-archives VERSION=v0.1.0` builds the same archives locally.
+`install.sh` and the unit are in `packaging/` of this repository (not in the release archive: clone the repository or
+copy that directory); details and the reasons for the unit's settings: [packaging/INSTALL.md](packaging/INSTALL.md).
+Without systemd, copy the binary and start it with root privileges.
 
-## Quick start
+## Usage examples
 
 ```bash
-# Local observation only
-sudo ./process-watcher --watch-image-contains nginx --log-file /var/log/process-watcher/events.jsonl
-
-# Local log plus remote outputs, with an exclusion
+# Log file elsewhere, remote outputs and an exclusion
 sudo ./process-watcher --watch-image-contains nginx --exclude-image-contains legitimate-helper \
   --log-file /var/log/process-watcher/events.jsonl \
   --tcp-address collector.example.net:9000 --udp-address 192.0.2.20:9001 \
@@ -90,7 +121,7 @@ sudo ./process-watcher --config /etc/process-watcher/config.yaml \
 ./process-watcher check-config --config ./process-watcher.yaml
 ./process-watcher print-config --config ./process-watcher.yaml
 
-# Reaction to child processes (see Kill rules)
+# React to child processes (see Kill rules)
 sudo ./process-watcher --watch-image-contains nginx --capture-argv=true --kill-enabled=true \
   --kill-field image --kill-field argv --kill-string demo-long-running-helper \
   --kill-regex '^(useradd|usermod)$'
@@ -105,7 +136,7 @@ receivers for trying things out (Python 3 standard library only) are in [example
 | Command | Effect |
 | --- | --- |
 | `run` (default) | Start observing. Waits even if no matching process is running yet. |
-| `check-config` | Validate the configuration (with `tcp.tls` and `ca_file` it also reads the CA bundle). Attaches no BPF programs, creates no files, contacts no endpoints and **never sends signals**, not even with active kill rules. |
+| `check-config` | Validate the configuration. Attaches no BPF programs, creates no files, contacts no endpoints and **never sends signals**, not even with active kill rules. |
 | `print-config` | The resolved configuration (YAML) and its source file. No secrets: of the bearer token only the variable name, of the webhook URL only scheme and host. |
 | `doctor` | Check requirements and privileges (see above). |
 | `--help`, `--version` | Help with all flags, defaults and YAML keys; version. |
@@ -186,11 +217,11 @@ match, the worker is a descendant of the master, so no event is sent twice. `wat
 
 | Event | Meaning |
 | --- | --- |
-| `process.discovered` | An instance that was already alive is assigned to a tree for the first time (`details.discovery`: `startup` or `reconcile`). No invented fork. |
-| `process.fork` | New process instance, also without a following exec. It first inherits the creator's image (`image_state: inherited`). |
-| `process.exec` | Successful program change (`image_state: executed`, `details.exec_index` counts from 1). Failed `execve` calls produce no event. |
-| `process.exit` | End of a process, at most one event per instance, with `exit_code`, `signal`, `duration_ns`. |
-| `agent.started` / `agent.ready` / `agent.health` / `agent.gap` / `agent.stopped` | Run begins / hooks active / counters / loss or observation gap / orderly end with the final counters. |
+| `process.discovered` | An instance that was already alive, assigned to a tree for the first time (`details.discovery`: `startup` or `reconcile`). No invented fork. |
+| `process.fork` | New process instance, also without a following exec; it first inherits the creator's image (`image_state: inherited`). |
+| `process.exec` | Successful program change (`details.exec_index` counts from 1). Failed `execve` calls produce no event. |
+| `process.exit` | End of a process (once per instance) with `exit_code`, `signal`, `duration_ns`. |
+| `agent.started` / `agent.ready` / `agent.health` / `agent.gap` / `agent.stopped` | Run begins / hooks active / counters / loss or gap / orderly end. |
 | `response.kill_requested` / `response.kill_result` | Audit of the kill feature. |
 
 Threads are not processes: the process ends with its last thread. A PID alone is no key: `process_id` is
@@ -211,7 +242,7 @@ Common fields: `schema_version`, `event_id` (UUID, identical for all outputs and
 `sequence` (strictly increasing per run), `event_type`, `timestamp`, `observed_at`, `boot_time_ns` (kernel event time,
 `CLOCK_BOOTTIME`, defines the order), `host`, `source`, `process`, `parent`, `root`, `lineage`, `filter`,
 `data_quality`, `details`. Values that could not be determined are `null` with a machine-readable reason in
-`data_quality.missing_fields`; truncated values are listed in `truncated_fields`.
+`data_quality.missing_fields`.
 
 Example, abbreviated (a shell descendant of an NGINX root, argument capture on):
 
@@ -376,13 +407,14 @@ The full list is in [docs/operation.md](docs/operation.md#limits).
 
 ## Building and testing
 
+Maintainers: pushing a `vX.Y.Z` tag builds and publishes a release ([release workflow](.github/workflows/release.yml)); `make release-archives VERSION=v0.1.0` builds the same archives locally.
+
 ```bash
 make build-linux                       # static binaries dist/process-watcher-linux-{amd64,arm64}
 make release-archives VERSION=v0.1.0   # the release archives, exactly as the release workflow builds them
 make test                              # unit tests (macOS or Linux)
-make test-docker                       # collector, response and agent end-to-end tests in a privileged container (--pid=host)
+make test-docker                       # collector, response and agent end-to-end tests in a privileged container
 make test-vm ARCH=amd64 KERNEL=ubuntu-5.15   # collector tests in a real kernel under QEMU (tests/vm/README.md)
-make test-vm-matrix                    # the same for all kernels and both architectures
 make bench-docker                      # CPU, RSS, throughput, latency, kill reaction time
 ```
 
@@ -392,16 +424,12 @@ a container ([build/ebpf/Dockerfile](build/ebpf/Dockerfile), pinned toolchain). 
 initial PID namespace and BPF; there are no mocks for the collector. Which runs actually took place is recorded in
 [docs/acceptance.md](docs/acceptance.md), the tested kernels in [docs/compatibility.md](docs/compatibility.md).
 
-## Documentation
+## More documentation
 
-- [docs/events.md](docs/events.md): process trees, identity, reconciliation, the complete event format, exclusions and
-  argument capture
-- [docs/kill-rules.md](docs/kill-rules.md): the complete kill-rule reference
-- [docs/outputs.md](docs/outputs.md): outputs and delivery limits
-- [docs/operation.md](docs/operation.md): health, gaps, shutdown and limits
-- [docs/compatibility.md](docs/compatibility.md), [docs/measurements.md](docs/measurements.md),
-  [docs/acceptance.md](docs/acceptance.md): tested kernels, measured numbers, runs that took place
-- [packaging/INSTALL.md](packaging/INSTALL.md): the systemd service
+Everything beyond this page is in [docs/](docs/): the full event format ([events.md](docs/events.md)), the complete
+kill-rule reference ([kill-rules.md](docs/kill-rules.md)), [outputs.md](docs/outputs.md),
+[operation.md](docs/operation.md), the tested kernels ([compatibility.md](docs/compatibility.md)), measurements
+([measurements.md](docs/measurements.md)) and the runs that took place ([acceptance.md](docs/acceptance.md)).
 
 License: GPL-3.0, see [LICENSE](LICENSE). The sources of the eBPF programs carry `GPL-2.0-or-later` (compatible with
 GPL-3.0); the object carries the license `GPL`, which the kernel requires for GPL-only helpers.
