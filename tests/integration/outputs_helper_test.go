@@ -158,6 +158,8 @@ type outCfg struct {
 	ExcludeArgv  []string
 	ExcludeScope string
 	CaptureArgv  bool
+	ArgvMaxArgs  int // capture.argv_max_args; 0: the default
+	ArgvMaxBytes int // capture.argv_max_bytes; 0: the default
 
 	LogPath      string // default: <dir>/events.jsonl
 	RotateMB     int
@@ -215,6 +217,12 @@ func (c outCfg) render(logPath string) string {
 	}
 	if c.CaptureArgv {
 		w("capture:\n  argv: true\n")
+		if c.ArgvMaxArgs > 0 {
+			w("  argv_max_args: %d\n", c.ArgvMaxArgs)
+		}
+		if c.ArgvMaxBytes > 0 {
+			w("  argv_max_bytes: %d\n", c.ArgvMaxBytes)
+		}
 	}
 	w("outputs:\n  file:\n    path: %s\n", strconv.Quote(logPath))
 	if c.RotateMB > 0 {

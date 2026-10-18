@@ -178,26 +178,30 @@ type agentCfg struct {
 	ExcludeArgv  []string
 	ExcludeScope string
 	CaptureArgv  bool
+	ArgvMaxArgs  int // capture.argv_max_args; 0: the default
+	ArgvMaxBytes int // capture.argv_max_bytes; 0: the default
 	MaxDepth     int
 	KillEnabled  bool
 	KillDryRun   bool
 	KillFields   []string
 	KillStrings  []string
 	KillRegex    []string
-	TCP          string
-	UDP          string
-	UDPMaxBytes  int
-	WebhookURL   string
-	QueueSize    int
-	MaxRetries   int
-	RotateMB     int
-	KeepFiles    int
-	RingMB       int
-	MaxProcesses int
-	Reconcile    string
-	Health       string
-	ConnectTO    string
-	WriteTO      string
+	// KillSpareRootImage sets kill.spare_root_image.
+	KillSpareRootImage bool
+	TCP                string
+	UDP                string
+	UDPMaxBytes        int
+	WebhookURL         string
+	QueueSize          int
+	MaxRetries         int
+	RotateMB           int
+	KeepFiles          int
+	RingMB             int
+	MaxProcesses       int
+	Reconcile          string
+	Health             string
+	ConnectTO          string
+	WriteTO            string
 }
 
 func yamlList(l []string) string {
@@ -229,6 +233,12 @@ func (c agentCfg) render(logPath string) string {
 	}
 	if c.CaptureArgv {
 		b.WriteString("capture:\n  argv: true\n")
+		if c.ArgvMaxArgs > 0 {
+			fmt.Fprintf(&b, "  argv_max_args: %d\n", c.ArgvMaxArgs)
+		}
+		if c.ArgvMaxBytes > 0 {
+			fmt.Fprintf(&b, "  argv_max_bytes: %d\n", c.ArgvMaxBytes)
+		}
 	}
 	if c.KillEnabled {
 		fmt.Fprintf(&b, "kill:\n  enabled: true\n  dry_run: %v\n", c.KillDryRun)
@@ -237,6 +247,9 @@ func (c agentCfg) render(logPath string) string {
 			fields = []string{"image"}
 		}
 		fmt.Fprintf(&b, "  fields: %s\n  strings: %s\n  regex: %s\n", yamlList(fields), yamlList(c.KillStrings), yamlList(c.KillRegex))
+		if c.KillSpareRootImage {
+			b.WriteString("  spare_root_image: true\n")
+		}
 	}
 	b.WriteString("outputs:\n  file:\n")
 	fmt.Fprintf(&b, "    path: %s\n", strconv.Quote(logPath))

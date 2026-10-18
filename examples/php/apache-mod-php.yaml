@@ -1,0 +1,22 @@
+# Apache with embedded PHP (mod_php): PHP runs inside the Apache worker processes.
+#
+# There is no php executable: the web server is the PHP process. The executable is apache2 on Debian and
+# Ubuntu and httpd on RHEL, Rocky, Alma and Amazon Linux; list the one your host uses (both is fine, only
+# one exists). "httpd" also matches lighttpd. For Apache with PHP-FPM behind proxy_fcgi use
+# php-fpm-observe.yaml instead: there PHP is not in Apache.
+#
+# One-line equivalent:
+#   sudo process-watcher --watch-image-contains apache2 --watch-image-contains httpd --capture-argv=true \
+#     --capture-argv-max-bytes 16383 --capture-argv-max-args 64
+config_version: 1
+watch:
+  image_contains: ["apache2", "httpd"]
+
+capture:
+  argv: true
+  argv_max_bytes: 16383
+  argv_max_args: 64
+
+outputs:
+  file:
+    path: /var/log/process-watcher/events.jsonl

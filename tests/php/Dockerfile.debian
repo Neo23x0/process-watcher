@@ -1,0 +1,12 @@
+# Lab image for tests/php: real nginx, Apache and PHP 8.4 from Debian trixie, to verify the executable
+# names and process trees of the PHP deployments against the real agent. Not used by the unit or the
+# integration tests.
+FROM debian:trixie-slim
+ENV DEBIAN_FRONTEND=noninteractive
+RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin/policy-rc.d \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+      nginx apache2 libapache2-mod-fcgid libapache2-mod-php8.4 \
+      php8.4-fpm php8.4-cli php8.4-cgi \
+      curl ca-certificates procps jq python3 netcat-openbsd util-linux psmisc iproute2 \
+ && rm -rf /var/lib/apt/lists/*

@@ -284,8 +284,8 @@ kernel**, not later from `/proc`: at most `capture.argv_max_args` arguments (def
 omitted from `argv`, not shortened**: a long `sh -c` command then disappears and only the shell and `-c` remain. The
 event says so: `process.argv_complete` is `false` and `process.argv_capture` gives the argument count, the total size,
 the limits and the cut argument's first bytes (`partial`), which is evidence only and never matched by an exclusion or
-a kill rule. Raise the limits (memory and log size grow with them, see [docs/operation.md](docs/operation.md))
-where long inline commands matter. Forks carry the creator's arguments (`argv_state: inherited`); processes that were
+a kill rule. Raise the limits (memory and log size grow with them, see [docs/php.md](docs/php.md)) where long inline
+commands matter. Forks carry the creator's arguments (`argv_state: inherited`); processes that were
 already running at start get theirs from `/proc/<pid>/cmdline` (`snapshot`), verified against the kernel start time of
 the instance so that a reused PID is never mixed up (if that fails, `argv` is `null` with a reason). Environment
 variables are never captured.
@@ -440,7 +440,9 @@ initial PID namespace and BPF; there are no mocks for the collector. Which runs 
 Everything beyond this page is in [docs/](docs/): the full event format ([events.md](docs/events.md)), the complete
 kill-rule reference ([kill-rules.md](docs/kill-rules.md)), [outputs.md](docs/outputs.md),
 [operation.md](docs/operation.md), the tested kernels ([compatibility.md](docs/compatibility.md)), measurements
-([measurements.md](docs/measurements.md)) and the runs that took place ([acceptance.md](docs/acceptance.md)).
+([measurements.md](docs/measurements.md)) and the runs that took place ([acceptance.md](docs/acceptance.md)). For PHP
+(PHP-FPM, Apache with mod_php, CGI, CLI): what to watch, long command lines, response rules and their limits, with
+ready-made configurations in [examples/php/](examples/php/): [php.md](docs/php.md).
 
 License: GPL-3.0, see [LICENSE](LICENSE). The sources of the eBPF programs carry `GPL-2.0-or-later` (compatible with
 GPL-3.0); the object carries the license `GPL`, which the kernel requires for GPL-only helpers.

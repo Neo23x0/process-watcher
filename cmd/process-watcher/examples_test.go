@@ -48,6 +48,7 @@ func TestShippedConfigurationsAreValid(t *testing.T) {
 	var files []string
 	for _, pattern := range []string{
 		filepath.Join("..", "..", "examples", "*.yaml"),
+		filepath.Join("..", "..", "examples", "php", "*.yaml"),
 		filepath.Join("..", "..", "packaging", "config", "*.yaml"),
 	} {
 		m, err := filepath.Glob(pattern)
@@ -56,7 +57,7 @@ func TestShippedConfigurationsAreValid(t *testing.T) {
 		}
 		files = append(files, m...)
 	}
-	if len(files) < 5 {
+	if len(files) < 11 {
 		t.Fatalf("expected the example files, found %v", files)
 	}
 	ca := writeTestCA(t, t.TempDir())
