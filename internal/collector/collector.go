@@ -169,6 +169,7 @@ type Info struct {
 	RingBytes     int
 	HooksActiveNS uint64 // CLOCK_BOOTTIME after the last hook was attached
 	CaptureArgs   bool
+	ArgLimits     ArgLimits // limits of the argument capture in effect
 	LiveTable     bool
 }
 
@@ -178,6 +179,9 @@ type Options struct {
 	RingBufferBytes int
 	// CaptureArgs captures raw argv at every exec (privacy sensitive).
 	CaptureArgs bool
+	// ArgLimits are the limits of the argument capture; the zero value selects
+	// the defaults (32 arguments, 4096 bytes). Only used with CaptureArgs.
+	ArgLimits ArgLimits
 	// LiveTable maintains the tgid -> start time table used to verify the exact
 	// identity of a pid right before a signal is sent.
 	LiveTable bool

@@ -317,6 +317,8 @@ exclude:
 
 capture:
   argv: false
+  argv_max_args: 32
+  argv_max_bytes: 4096
 
 outputs:
   file:

@@ -23,6 +23,8 @@ var specTable = []struct {
 	{"exclude.argv_contains", "exclude-argv-contains", true},
 	{"exclude.scope", "exclude-scope", false},
 	{"capture.argv", "capture-argv", false},
+	{"capture.argv_max_args", "capture-argv-max-args", false},   // extension: configurable limits
+	{"capture.argv_max_bytes", "capture-argv-max-bytes", false}, // extension: configurable limits
 	{"kill.enabled", "kill-enabled", false},
 	{"kill.dry_run", "kill-dry-run", false},
 	{"kill.fields", "kill-field", true},

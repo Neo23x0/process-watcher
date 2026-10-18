@@ -80,7 +80,7 @@ func Doctor(r *config.Resolved, version string, w io.Writer) int {
 	}
 
 	// The collector itself: BTF, attach, a real observation.
-	col, err := ebpf.New(collector.Options{RingBufferBytes: 1 << 20, CaptureArgs: r.Config.Capture.Argv, LiveTable: r.Config.Kill.Enabled})
+	col, err := ebpf.New(collector.Options{RingBufferBytes: 1 << 20, CaptureArgs: r.Config.Capture.Argv, ArgLimits: collector.ArgLimits{MaxArgs: r.Config.Capture.ArgvMaxArgs, MaxBytes: r.Config.Capture.ArgvMaxBytes}, LiveTable: r.Config.Kill.Enabled})
 	if err != nil {
 		var pe *collector.PrerequisiteError
 		if errors.As(err, &pe) {

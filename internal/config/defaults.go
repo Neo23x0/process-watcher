@@ -15,6 +15,10 @@ func Default() Config {
 			ArgvContains:  []string{},
 			Scope:         ScopeRemote,
 		},
+		Capture: CaptureConfig{
+			ArgvMaxArgs:  32,
+			ArgvMaxBytes: 4096,
+		},
 		Kill: KillConfig{
 			Fields:  []string{KillFieldImage},
 			Strings: []string{},

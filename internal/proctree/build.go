@@ -104,8 +104,11 @@ func (e *Engine) processOf(i *Instance, dq *event.DataQuality) *event.Process {
 			p.Argv = list
 			st := i.ArgsState
 			p.ArgvState = &st
+			complete := !i.Args.Truncated
+			p.ArgvComplete = &complete
 			if i.Args.Truncated {
 				dq.TruncatedFields = addUnique(dq.TruncatedFields, "process.argv")
+				p.ArgvCapture = argvCapture(i.Args, san)
 			}
 		case collector.ArgsFailed:
 			reason := event.ReasonKernelUnavailable
@@ -118,6 +121,33 @@ func (e *Engine) processOf(i *Instance, dq *event.DataQuality) *event.Process {
 		}
 	}
 	return p
+}
+
+// argvCapture describes an incomplete argument vector for the event.
+func argvCapture(a collector.Args, san func(field, v string) string) *event.ArgvCapture {
+	lim := a.Limits.Normalized()
+	c := &event.ArgvCapture{
+		CapturedArgs:  len(a.List),
+		CapturedBytes: a.CapturedBytes,
+		LimitArgs:     lim.MaxArgs,
+		LimitBytes:    lim.MaxBytes,
+	}
+	if a.Argc > 0 {
+		v := a.Argc
+		c.Argc = &v
+	}
+	if a.TotalBytes > 0 {
+		v := a.TotalBytes
+		c.TotalBytes = &v
+	}
+	if a.Partial != nil {
+		c.Partial = &event.ArgvPartial{
+			Index:         a.Partial.Index,
+			Value:         san("process.argv_capture.partial.value", a.Partial.Value),
+			CapturedBytes: len(a.Partial.Value),
+		}
+	}
+	return c
 }
 
 // parentOf takes the metadata excerpt of the creating process that is stored

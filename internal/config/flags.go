@@ -54,7 +54,11 @@ var flagSpecs = []flagSpec{
 		"Effect of exclusions: remote keeps excluded events in the local log and withholds them from TCP, UDP and webhook; all suppresses them everywhere."},
 
 	{"capture-argv", "capture.argv", "", secCapture,
-		"Capture process arguments (at most 32 arguments and 4096 bytes per event). Arguments can contain credentials."},
+		"Capture process arguments at exec time (limits: --capture-argv-max-args and --capture-argv-max-bytes). Arguments can contain credentials."},
+	{"capture-argv-max-args", "capture.argv_max_args", "N", secCapture,
+		fmt.Sprintf("Capture at most N arguments per exec (%d to %d, default 32). Requires --capture-argv=true. More arguments are reported as incomplete (argv_complete: false).", minArgvMaxArgs, maxArgvMaxArgs)},
+	{"capture-argv-max-bytes", "capture.argv_max_bytes", "N", secCapture,
+		fmt.Sprintf("Capture at most N raw argument bytes per exec, arguments plus their NUL terminators (%d to %d, default 4096). Requires --capture-argv=true. A longer argument list is reported as incomplete; the cut argument is kept separately in argv_capture.partial and never used for matching.", minArgvMaxBytes, maxArgvMaxBytes)},
 
 	{"kill-enabled", "kill.enabled", "", secKill,
 		"Enable rule based termination of observed descendant processes with SIGKILL (see the note below this section)."},

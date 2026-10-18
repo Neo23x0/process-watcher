@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/Neo23x0/process-watcher/internal/collector"
 )
 
 // Upper bounds. They protect consumers from overflow and absurd allocations
@@ -25,6 +27,13 @@ const (
 
 	minUDPBytes = 512
 	maxUDPBytes = 65507 // 65535 minus IPv4 and UDP headers
+
+	// Argument capture limits; the byte ceiling is the size of the kernel side
+	// scratch buffer (collector.CeilingMaxArgBytes, checked by a test).
+	minArgvMaxArgs  = collector.MinMaxArgs
+	maxArgvMaxArgs  = collector.CeilingMaxArgs
+	minArgvMaxBytes = collector.MinMaxArgBytes
+	maxArgvMaxBytes = collector.CeilingMaxArgBytes
 )
 
 var (
@@ -65,6 +74,7 @@ func validate(cfg *Config, requireWatch bool) []*Error {
 	}
 	v.watch(cfg, requireWatch)
 	v.exclude(cfg)
+	v.capture(cfg)
 	v.kill(cfg)
 	v.file(cfg.Outputs.File)
 	v.tcp(cfg.Outputs.TCP)
@@ -147,6 +157,25 @@ func (v *validator) watch(cfg *Config, requireWatch bool) {
 	v.nonEmpty("watch.image_contains", w.ImageContains)
 	if w.MaxDepth < 0 {
 		v.add("watch.max_depth", "must be 0 (unlimited) or greater, got %d", w.MaxDepth)
+	}
+}
+
+func (v *validator) capture(cfg *Config) {
+	c := cfg.Capture
+	if c.ArgvMaxArgs < minArgvMaxArgs || c.ArgvMaxArgs > maxArgvMaxArgs {
+		v.add("capture.argv_max_args", "must be between %d and %d, got %d", minArgvMaxArgs, maxArgvMaxArgs, c.ArgvMaxArgs)
+	}
+	if c.ArgvMaxBytes < minArgvMaxBytes || c.ArgvMaxBytes > maxArgvMaxBytes {
+		v.add("capture.argv_max_bytes", "must be between %d and %d, got %d", minArgvMaxBytes, maxArgvMaxBytes, c.ArgvMaxBytes)
+	}
+	if !c.Argv {
+		def := Default().Capture
+		if c.ArgvMaxArgs != def.ArgvMaxArgs {
+			v.add("capture.argv_max_args", "requires capture.argv: true (set capture.argv: true or pass --capture-argv=true)")
+		}
+		if c.ArgvMaxBytes != def.ArgvMaxBytes {
+			v.add("capture.argv_max_bytes", "requires capture.argv: true (set capture.argv: true or pass --capture-argv=true)")
+		}
 	}
 }
 

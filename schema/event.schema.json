@@ -167,10 +167,41 @@
         "euid": { "type": "integer", "minimum": 0 },
         "gid": { "type": "integer", "minimum": 0 },
         "argv": {
-          "description": "One element per argument, never joined into a shell command. Null when capture.argv is off or the value is unavailable (see data_quality). At most 32 arguments and 4096 raw bytes; a partially captured last argument is never part of the list.",
-          "oneOf": [ { "type": "array", "items": { "type": "string" }, "maxItems": 32 }, { "type": "null" } ]
+          "description": "One element per argument, never joined into a shell command. Null when capture.argv is off or the value is unavailable (see data_quality). Only complete arguments are listed: at most capture.argv_max_args arguments (default 32) and capture.argv_max_bytes raw bytes (default 4096); the argument that the byte limit cut is never part of the list (see argv_complete and argv_capture).",
+          "oneOf": [ { "type": "array", "items": { "type": "string" }, "maxItems": 1024 }, { "type": "null" } ]
         },
-        "argv_state": { "oneOf": [ { "enum": ["inherited", "executed", "snapshot"] }, { "type": "null" } ] }
+        "argv_state": { "oneOf": [ { "enum": ["inherited", "executed", "snapshot"] }, { "type": "null" } ] },
+        "argv_complete": { "description": "Present whenever argv is a list. true: argv is the whole argument vector. false: the capture limits cut it, argv_capture says how.", "type": "boolean" },
+        "argv_capture": {
+          "description": "Present only when argv_complete is false. Evidence about what the capture could not keep; none of it is ever matched by exclusions or kill rules.",
+          "type": "object",
+          "required": ["argc", "captured_args", "total_bytes", "captured_bytes", "limit_args", "limit_bytes", "partial"],
+          "additionalProperties": false,
+          "properties": {
+            "argc": { "description": "Argument count the kernel reported at exec; null when the arguments were read later from /proc (snapshot).", "oneOf": [ { "type": "integer", "minimum": 0 }, { "type": "null" } ] },
+            "captured_args": { "description": "Number of complete arguments, equal to the length of argv.", "type": "integer", "minimum": 0 },
+            "total_bytes": { "description": "Size of the raw argument area at exec (arguments and their NUL terminators); null if unknown.", "oneOf": [ { "type": "integer", "minimum": 0 }, { "type": "null" } ] },
+            "captured_bytes": { "description": "Raw bytes that were captured, including the partial argument and the NUL terminators.", "type": "integer", "minimum": 0 },
+            "limit_args": { "description": "capture.argv_max_args in effect.", "type": "integer", "minimum": 1 },
+            "limit_bytes": { "description": "capture.argv_max_bytes in effect.", "type": "integer", "minimum": 1 },
+            "partial": {
+              "description": "The argument that the byte limit cut; null if the capture ended on an argument boundary or at the argument limit.",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "required": ["index", "value", "captured_bytes"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": { "description": "Position in the argument vector; equal to captured_args.", "type": "integer", "minimum": 0 },
+                    "value": { "description": "The captured prefix of the argument (invalid UTF-8 bytes are replaced, see data_quality.sanitized_fields).", "type": "string" },
+                    "captured_bytes": { "description": "Length of the prefix in raw bytes before sanitizing.", "type": "integer", "minimum": 1 }
+                  }
+                },
+                { "type": "null" }
+              ]
+            }
+          }
+        }
       }
     },
     "parent": {
@@ -310,7 +341,7 @@
     },
     "details_started": {
       "type": "object",
-      "required": ["version", "pid", "kernel", "arch", "phase", "complete_capture", "hooks_active_boot_ns", "history_before_hooks", "config_source", "watch_image_contains", "capture_argv", "outputs", "kill", "log_repair"],
+      "required": ["version", "pid", "kernel", "arch", "phase", "complete_capture", "hooks_active_boot_ns", "history_before_hooks", "config_source", "watch_image_contains", "capture_argv", "capture_argv_limits", "outputs", "kill", "log_repair"],
       "additionalProperties": false,
       "properties": {
         "version": { "type": "string" },
@@ -324,6 +355,14 @@
         "config_source": { "type": "string" },
         "watch_image_contains": { "type": "array", "items": { "type": "string" } },
         "capture_argv": { "type": "boolean" },
+        "capture_argv_limits": {
+          "description": "The argument capture limits in effect (capture.argv_max_args, capture.argv_max_bytes); null when capture_argv is false.",
+          "oneOf": [
+            { "type": "null" },
+            { "type": "object", "required": ["max_args", "max_bytes"], "additionalProperties": false,
+              "properties": { "max_args": { "type": "integer", "minimum": 1 }, "max_bytes": { "type": "integer", "minimum": 1 } } }
+          ]
+        },
         "outputs": { "type": "array", "items": { "enum": ["file", "tcp", "udp", "webhook"] } },
         "kill": {
           "type": "object",

@@ -123,6 +123,42 @@ type Process struct {
 	GID          uint32   `json:"gid"`
 	Argv         []string `json:"argv"`
 	ArgvState    *string  `json:"argv_state"`
+	// ArgvComplete says whether Argv is the whole argument vector. Present whenever
+	// Argv is a list; false when the capture limits cut it (ArgvCapture says how).
+	ArgvComplete *bool `json:"argv_complete,omitempty"`
+	// ArgvCapture explains an incomplete Argv: the limits in effect, the totals and
+	// the partially captured argument. Present only when ArgvComplete is false.
+	ArgvCapture *ArgvCapture `json:"argv_capture,omitempty"`
+}
+
+// ArgvCapture describes what the argument capture could not keep. Everything in
+// it is evidence for an investigation; the partial argument is never matched
+// by an exclusion or a kill rule.
+type ArgvCapture struct {
+	// Argc is the argument count the kernel reported at exec; null when the
+	// arguments were read later from /proc (snapshot).
+	Argc *int `json:"argc"`
+	// CapturedArgs is len(argv): the complete arguments.
+	CapturedArgs int `json:"captured_args"`
+	// TotalBytes is the size of the raw argument area at exec; null if unknown.
+	TotalBytes *int `json:"total_bytes"`
+	// CapturedBytes is the number of raw bytes that were captured, including the
+	// partial argument and the NUL terminators.
+	CapturedBytes int `json:"captured_bytes"`
+	// LimitArgs and LimitBytes are the capture limits in effect.
+	LimitArgs  int `json:"limit_args"`
+	LimitBytes int `json:"limit_bytes"`
+	// Partial is the argument that the byte limit cut, null if the capture ended
+	// on an argument boundary or at the argument limit.
+	Partial *ArgvPartial `json:"partial"`
+}
+
+// ArgvPartial is the captured prefix of the cut argument.
+type ArgvPartial struct {
+	Index int    `json:"index"`
+	Value string `json:"value"`
+	// CapturedBytes is the length of Value in raw bytes before UTF-8 sanitizing.
+	CapturedBytes int `json:"captured_bytes"`
 }
 
 // Parent is the stored metadata excerpt of the creating process.

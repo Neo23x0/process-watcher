@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -445,8 +446,14 @@ func TestLongPathAndArgumentLimits(t *testing.T) {
 		helper, _ := startHelper(t, "many-args", "40", "10")
 		x := of(drain(t, c, 300*time.Millisecond), helper)
 		a := x[2].Exec.Args
-		if len(a.List) != collector.MaxArgs || !a.Truncated || a.Argc != 41 {
+		if len(a.List) != collector.DefaultMaxArgs || !a.Truncated || a.Argc != 41 || a.Complete() {
 			t.Errorf("%d args, truncated=%v argc=%d", len(a.List), a.Truncated, a.Argc)
+		}
+		if a.Partial != nil {
+			t.Errorf("the argument limit leaves no partial argument, got %+v", a.Partial)
+		}
+		if a.TotalBytes != 10+40*11 || a.Limits != collector.DefaultArgLimits() {
+			t.Errorf("total %d bytes, limits %+v", a.TotalBytes, a.Limits)
 		}
 	})
 	t.Run("more than 4096 argument bytes", func(t *testing.T) {
@@ -462,6 +469,67 @@ func TestLongPathAndArgumentLimits(t *testing.T) {
 		for _, s := range a.List[1:] {
 			if len(s) != 1000 {
 				t.Errorf("a partially captured argument leaked into the list (%d bytes)", len(s))
+			}
+		}
+		// The cut argument is kept apart: argv[0] (10 bytes) and four arguments of 1001
+		// bytes use 4014 of the 4096 bytes, the fifth argument has 82 captured bytes.
+		if a.Partial == nil || a.Partial.Index != 5 || a.Partial.Value != strings.Repeat("x", 82) {
+			t.Errorf("partial argument %+v", a.Partial)
+		}
+		if a.TotalBytes != 10+5*1001 || a.CapturedBytes != 4096 || a.Argc != 6 {
+			t.Errorf("total %d, captured %d, argc %d", a.TotalBytes, a.CapturedBytes, a.Argc)
+		}
+	})
+}
+
+// The byte limit is configurable up to the size of the kernel buffer; what does not fit is still
+// reported with its total size and the captured prefix.
+func TestConfigurableArgumentLimits(t *testing.T) {
+	t.Run("a larger limit keeps what the default cuts", func(t *testing.T) {
+		c := openCollector(t, collector.Options{CaptureArgs: true, ArgLimits: collector.ArgLimits{MaxBytes: 16383}})
+		helper, _ := startHelper(t, "many-args", "5", "1000")
+		a := of(drain(t, c, 300*time.Millisecond), helper)[2].Exec.Args
+		if !a.Complete() || len(a.List) != 6 || a.Partial != nil || a.TotalBytes != 5015 || a.CapturedBytes != 5015 {
+			t.Fatalf("%+v", a)
+		}
+		if a.Limits.MaxBytes != 16383 || a.Limits.MaxArgs != collector.DefaultMaxArgs {
+			t.Errorf("limits %+v", a.Limits)
+		}
+	})
+	t.Run("the argument that exceeds the largest limit is cut and reported", func(t *testing.T) {
+		c := openCollector(t, collector.Options{CaptureArgs: true, ArgLimits: collector.ArgLimits{MaxBytes: 16383}})
+		helper, _ := startHelper(t, "many-args", "1", "20000")
+		a := of(drain(t, c, 300*time.Millisecond), helper)[2].Exec.Args
+		if a.Complete() || !reflect.DeepEqual(a.List, []string{"/bin/true"}) {
+			t.Fatalf("list %q complete=%v", a.List, a.Complete())
+		}
+		if a.Partial == nil || a.Partial.Index != 1 || len(a.Partial.Value) != 16383-10 || a.TotalBytes != 10+20001 || a.CapturedBytes != 16383 {
+			t.Errorf("partial %+v total %d captured %d", a.Partial, a.TotalBytes, a.CapturedBytes)
+		}
+	})
+	t.Run("a smaller limit cuts earlier", func(t *testing.T) {
+		c := openCollector(t, collector.Options{CaptureArgs: true, ArgLimits: collector.ArgLimits{MaxBytes: 512}})
+		helper, _ := startHelper(t, "many-args", "2", "400")
+		a := of(drain(t, c, 300*time.Millisecond), helper)[2].Exec.Args
+		if len(a.List) != 2 || a.Partial == nil || a.CapturedBytes != 512 || a.TotalBytes != 10+2*401 {
+			t.Errorf("%+v", a)
+		}
+	})
+	t.Run("the argument count limit is applied in Go", func(t *testing.T) {
+		c := openCollector(t, collector.Options{CaptureArgs: true, ArgLimits: collector.ArgLimits{MaxArgs: 64}})
+		helper, _ := startHelper(t, "many-args", "50", "5")
+		a := of(drain(t, c, 300*time.Millisecond), helper)[2].Exec.Args
+		if !a.Complete() || len(a.List) != 51 {
+			t.Errorf("%d args, complete=%v", len(a.List), a.Complete())
+		}
+	})
+	t.Run("limits outside the supported range are refused", func(t *testing.T) {
+		requireRoot(t)
+		for _, lim := range []collector.ArgLimits{{MaxBytes: 16384}, {MaxBytes: 100}, {MaxArgs: 5000}} {
+			c, err := New(collector.Options{RingBufferBytes: 1 << 20, CaptureArgs: true, ArgLimits: lim})
+			if err == nil {
+				_ = c.Close()
+				t.Errorf("limits %+v were accepted", lim)
 			}
 		}
 	})

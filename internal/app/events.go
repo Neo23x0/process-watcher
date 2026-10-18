@@ -56,6 +56,9 @@ func (a *App) emitStarted() error {
 			Fields:  append([]string{}, a.cfg.Kill.Fields...),
 		},
 	}
+	if a.cfg.Capture.Argv {
+		d.ArgvLimits = &event.ArgvLimits{MaxArgs: a.cfg.Capture.ArgvMaxArgs, MaxBytes: a.cfg.Capture.ArgvMaxBytes}
+	}
 	if a.rules != nil {
 		d.Kill.Rules = a.rules.Count()
 	}

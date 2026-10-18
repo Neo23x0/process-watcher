@@ -47,6 +47,17 @@ var validationCases = []struct {
 	{name: "exclude argv with capture", args: []string{"--exclude-argv-contains", "x", "--capture-argv"}},
 	{name: "exclude image needs no capture", args: []string{"--exclude-image-contains", "x"}},
 
+	// capture limits
+	{name: "argv limits need capture", args: []string{"--capture-argv-max-bytes", "8000"}, paths: []string{"capture.argv_max_bytes"}, msg: "capture.argv: true"},
+	{name: "argv count limit needs capture", args: []string{"--capture-argv-max-args", "64"}, paths: []string{"capture.argv_max_args"}, msg: "capture.argv: true"},
+	{name: "argv defaults need no capture", args: []string{"--capture-argv-max-bytes", "4096", "--capture-argv-max-args", "32"}},
+	{name: "argv limits with capture", args: []string{"--capture-argv", "--capture-argv-max-bytes", "16383", "--capture-argv-max-args", "1024"}},
+	{name: "argv bytes above the kernel buffer", args: []string{"--capture-argv", "--capture-argv-max-bytes", "16384"}, paths: []string{"capture.argv_max_bytes"}, msg: "between 256 and 16383"},
+	{name: "argv bytes below the minimum", args: []string{"--capture-argv", "--capture-argv-max-bytes", "255"}, paths: []string{"capture.argv_max_bytes"}, msg: "between 256 and 16383"},
+	{name: "argv count zero", args: []string{"--capture-argv", "--capture-argv-max-args", "0"}, paths: []string{"capture.argv_max_args"}, msg: "between 1 and 1024"},
+	{name: "argv count above the maximum", args: []string{"--capture-argv", "--capture-argv-max-args", "1025"}, paths: []string{"capture.argv_max_args"}},
+	{name: "argv limits are integers", args: []string{"--capture-argv", "--capture-argv-max-bytes", "4k"}, paths: []string{"--capture-argv-max-bytes"}},
+
 	// kill: shape errors
 	{name: "kill unknown field", args: []string{"--kill-field", "bogus"}, paths: []string{"kill.fields[0]"}, msg: `unknown field "bogus"`},
 	{name: "kill field is case sensitive", args: []string{"--kill-field", "image", "--kill-field", "Image"}, paths: []string{"kill.fields[1]"}},

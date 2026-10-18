@@ -47,20 +47,28 @@ type ExitDetails struct {
 // StartedDetails of agent.started: sent before the startup reconciliation is
 // finished; nothing is claimed about completeness.
 type StartedDetails struct {
-	Version            string     `json:"version"`
-	PID                int        `json:"pid"`
-	Kernel             string     `json:"kernel"`
-	Arch               string     `json:"arch"`
-	Phase              string     `json:"phase"` // "initializing"
-	CompleteCapture    bool       `json:"complete_capture"`
-	HooksActiveBootNS  string     `json:"hooks_active_boot_ns"`
-	HistoryBeforeHooks string     `json:"history_before_hooks"` // "unknown"
-	ConfigSource       string     `json:"config_source"`
-	WatchImageContains []string   `json:"watch_image_contains"`
-	CaptureArgv        bool       `json:"capture_argv"`
-	Outputs            []string   `json:"outputs"`
-	Kill               KillStatus `json:"kill"`
-	LogRepair          *LogRepair `json:"log_repair"`
+	Version            string   `json:"version"`
+	PID                int      `json:"pid"`
+	Kernel             string   `json:"kernel"`
+	Arch               string   `json:"arch"`
+	Phase              string   `json:"phase"` // "initializing"
+	CompleteCapture    bool     `json:"complete_capture"`
+	HooksActiveBootNS  string   `json:"hooks_active_boot_ns"`
+	HistoryBeforeHooks string   `json:"history_before_hooks"` // "unknown"
+	ConfigSource       string   `json:"config_source"`
+	WatchImageContains []string `json:"watch_image_contains"`
+	CaptureArgv        bool     `json:"capture_argv"`
+	// ArgvLimits are the argument capture limits in effect; null when capture_argv is false.
+	ArgvLimits *ArgvLimits `json:"capture_argv_limits"`
+	Outputs    []string    `json:"outputs"`
+	Kill       KillStatus  `json:"kill"`
+	LogRepair  *LogRepair  `json:"log_repair"`
+}
+
+// ArgvLimits are the limits of the argument capture.
+type ArgvLimits struct {
+	MaxArgs  int `json:"max_args"`
+	MaxBytes int `json:"max_bytes"`
 }
 
 // KillStatus is the kill feature configuration summary.

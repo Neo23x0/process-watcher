@@ -40,9 +40,9 @@ type pwPwExecScratch struct {
 		ParentImageLen uint16
 		PathLen        uint16
 		ArgsLen        uint32
-		Reserved       uint32
+		ArgsTotal      uint32
 	}
-	Data [12288]int8
+	Data [24576]int8
 }
 
 type pwPwPathbuf struct {
@@ -88,6 +88,7 @@ const (
 	pwProgPwSchedProcessExec = "pw_sched_process_exec"
 	pwProgPwSchedProcessExit = "pw_sched_process_exit"
 	pwProgPwSchedProcessFork = "pw_sched_process_fork"
+	pwVarCfgArgsMax          = "cfg_args_max"
 	pwVarCfgCaptureArgs      = "cfg_capture_args"
 	pwVarCfgLiveSize         = "cfg_live_size"
 	pwVarCfgLiveTable        = "cfg_live_table"
@@ -165,6 +166,7 @@ type pwMapSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type pwVariableSpecs struct {
+	CfgArgsMax     *ebpf.VariableSpec `ebpf:"cfg_args_max"`
 	CfgCaptureArgs *ebpf.VariableSpec `ebpf:"cfg_capture_args"`
 	CfgLiveSize    *ebpf.VariableSpec `ebpf:"cfg_live_size"`
 	CfgLiveTable   *ebpf.VariableSpec `ebpf:"cfg_live_table"`
@@ -222,6 +224,7 @@ func (m *pwMaps) Close() error {
 //
 // It can be passed to loadPwObjects or ebpf.CollectionSpec.LoadAndAssign.
 type pwVariables struct {
+	CfgArgsMax     *ebpf.Variable `ebpf:"cfg_args_max"`
 	CfgCaptureArgs *ebpf.Variable `ebpf:"cfg_capture_args"`
 	CfgLiveSize    *ebpf.Variable `ebpf:"cfg_live_size"`
 	CfgLiveTable   *ebpf.Variable `ebpf:"cfg_live_table"`

@@ -84,8 +84,8 @@ Example (a shell descendant of an NGINX root with argument capture enabled, stor
 ```
 
 The shell was called as `sh`, the program that actually ran is `dash`. The contract adds `process.argv_state`,
-`parent.image_path`, `data_quality.sanitized_fields` and `details.exec_filename`, `previous_image` and `thread_exec`
-as **additive** fields.
+`process.argv_complete`, `process.argv_capture`, `parent.image_path`, `data_quality.sanitized_fields` and
+`details.exec_filename`, `previous_image` and `thread_exec` as **additive** fields.
 
 ## Exclusions
 
@@ -108,11 +108,17 @@ proof of harmlessness; a very short string such as `sh` matches more programs th
 ## Argument capture
 
 **Off** by default (`capture.argv: false`), because arguments can contain credentials (`curl -u user:pass ...`).
-When enabled, the arguments are captured at exec **in the kernel**, not later from `/proc`: at most **32 arguments**
-and **4096 raw bytes** per event. An overflow is listed in `data_quality.truncated_fields`; a last argument that was
-only partly captured never enters the list. It is an array, not a joined shell command. Forks carry the inherited
-arguments of the creator, marked `argv_state: inherited`. Processes that were already running at start get their
-arguments (`snapshot`) from `/proc/<pid>/cmdline`, after the start tick was compared **before and after** reading
-with the kernel start time of the instance, so a reused PID is never mixed up; if that fails, `argv` is `null` with a
-reason. Environment variables are not captured. Enable the capture only if the receivers and the local log are
-prepared for it.
+When enabled, the arguments are captured at exec **in the kernel**, not later from `/proc`: at most
+`capture.argv_max_args` arguments (default 32, 1 to 1024) and `capture.argv_max_bytes` raw bytes, arguments plus their
+NUL terminators (default 4096, 256 to 16383). It is an array, not a joined shell command. **An argument that the byte
+limit cuts is omitted from `argv`**, and the event says what happened: an overflow is listed in
+`data_quality.truncated_fields`, `process.argv_complete` is `false` and `process.argv_capture` holds `argc` (the
+kernel's count), `captured_args`, `total_bytes` (the size of the argument area at exec), `captured_bytes`, `limit_args`,
+`limit_bytes` and `partial` (`index`, the first bytes of the cut argument in `value`, `captured_bytes`). The partial
+argument is evidence for an investigation and is never used by `exclude.argv_contains` or a kill rule. For
+`sh -c -- <command>` (what PHP's `shell_exec` starts) the longest command that fits the default limit is 4,086 bytes.
+Forks carry the inherited arguments of the creator, marked `argv_state: inherited`. Processes that were already running
+at start get their arguments (`snapshot`) from `/proc/<pid>/cmdline`, after the start tick was compared **before and
+after** reading with the kernel start time of the instance, so a reused PID is never mixed up; if that fails, `argv` is
+`null` with a reason. Environment variables are not captured. Enable the capture only if the receivers and the local
+log are prepared for it.

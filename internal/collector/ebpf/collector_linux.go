@@ -88,9 +88,20 @@ func New(opts collector.Options) (*Collector, error) {
 		}
 		return vs.Set(v)
 	}
+	opts.ArgLimits = opts.ArgLimits.Normalized()
+	if opts.CaptureArgs {
+		if lim := opts.ArgLimits; lim.MaxBytes < collector.MinMaxArgBytes || lim.MaxBytes > collector.CeilingMaxArgBytes ||
+			lim.MaxArgs < collector.MinMaxArgs || lim.MaxArgs > collector.CeilingMaxArgs {
+			return nil, fmt.Errorf("argument capture limits %d arguments / %d bytes are outside %d..%d arguments / %d..%d bytes",
+				lim.MaxArgs, lim.MaxBytes, collector.MinMaxArgs, collector.CeilingMaxArgs, collector.MinMaxArgBytes, collector.CeilingMaxArgBytes)
+		}
+	}
 	c := &Collector{opts: opts, exits: make(map[collector.Key]struct{}, exitRingSize)}
 	if opts.CaptureArgs {
 		if err := setVar(pwVarCfgCaptureArgs, 1); err != nil {
+			return nil, err
+		}
+		if err := setVar(pwVarCfgArgsMax, uint32(opts.ArgLimits.MaxBytes)); err != nil {
 			return nil, err
 		}
 	}
@@ -135,6 +146,7 @@ func New(opts collector.Options) (*Collector, error) {
 		RingBytes:     opts.RingBufferBytes,
 		HooksActiveNS: clock.BootNS(),
 		CaptureArgs:   opts.CaptureArgs,
+		ArgLimits:     opts.ArgLimits,
 		LiveTable:     opts.LiveTable,
 	}
 	var uts unix.Utsname
@@ -164,7 +176,7 @@ func (c *Collector) Next(deadline time.Time) (collector.Event, error) {
 			}
 			return collector.Event{}, fmt.Errorf("read ring buffer: %w", err)
 		}
-		ev, err := decode(c.rec.RawSample)
+		ev, err := decode(c.rec.RawSample, c.opts.ArgLimits)
 		if err != nil {
 			return collector.Event{}, err
 		}

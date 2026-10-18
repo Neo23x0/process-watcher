@@ -43,7 +43,7 @@ func TestWireContract(t *testing.T) {
 			"parent_tgid": execParentTGID, "flags": execFlags, "argc": execArgc, "comm": execComm,
 			"parent_comm": execParentComm, "image_len": execImageLen, "filename_len": execFilenameLen,
 			"parent_image_len": execParentImageLen, "path_len": execPathLen, "args_len": execArgsLen,
-			"reserved": execReserved,
+			"args_total": execArgsTotal,
 		}},
 		"pw_snap": {snapFixedSize, map[string]int{
 			"size": snapSize, "flags": snapFlags, "visit_ns": snapVisit, "start_ns": snapStart,
@@ -134,7 +134,7 @@ func TestDecodeFork(t *testing.T) {
 	put32(b, forkGID, 35)
 	copy(b[forkComm:], "nginx\x00junk")
 
-	ev, err := decode(b)
+	ev, err := decode(b, collector.ArgLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestDecodeExit(t *testing.T) {
 	put32(b, exitTGID, 7)
 	put32(b, exitTID, 8)
 	put32(b, exitStatus, uint32(0x100)) // exit(1)
-	ev, err := decode(b)
+	ev, err := decode(b, collector.ArgLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestDecodeExecSymlinkAndArgs(t *testing.T) {
 	// file is dash: image must be dash, not argv[0].
 	rec := execRecord(fArgsCaptured|fFromThread, "dash", "/bin/sh", "nginx", "/usr/bin/dash",
 		[]byte("sh\x00-c\x00id\x00"), 3)
-	ev, err := decode(rec)
+	ev, err := decode(rec, collector.ArgLimits{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +269,7 @@ func TestDecodeExecFlags(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ev, err := decode(execRecord(tc.flags, "img", "fn", "pimg", tc.path, tc.args, 0))
+			ev, err := decode(execRecord(tc.flags, "img", "fn", "pimg", tc.path, tc.args, 0), collector.ArgLimits{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -289,7 +289,7 @@ func TestDecodeRejectsBrokenRecords(t *testing.T) {
 		"short exec fixed": good[:execFixedSize-1],
 		"exec lengths lie": good[:len(good)-3],
 	} {
-		if _, err := decode(b); err == nil {
+		if _, err := decode(b, collector.ArgLimits{}); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
 	}

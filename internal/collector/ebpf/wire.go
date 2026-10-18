@@ -67,7 +67,7 @@ const (
 	execParentImageLen = 100
 	execPathLen        = 102
 	execArgsLen        = 104
-	execReserved       = 108
+	execArgsTotal      = 108
 
 	snapSize        = 0
 	snapFlags       = 4
@@ -132,7 +132,7 @@ func cstr(b []byte) string {
 }
 
 // decode parses one ring buffer record.
-func decode(b []byte) (collector.Event, error) {
+func decode(b []byte, lim collector.ArgLimits) (collector.Event, error) {
 	if len(b) < hdrSize {
 		return collector.Event{}, fmt.Errorf("record of %d bytes is shorter than the header", len(b))
 	}
@@ -140,7 +140,7 @@ func decode(b []byte) (collector.Event, error) {
 	case evFork:
 		return decodeFork(b)
 	case evExec:
-		return decodeExec(b)
+		return decodeExec(b, lim)
 	case evExit:
 		return decodeExit(b)
 	default:
@@ -184,7 +184,7 @@ func decodeExit(b []byte) (collector.Event, error) {
 	}, nil
 }
 
-func decodeExec(b []byte) (collector.Event, error) {
+func decodeExec(b []byte, lim collector.ArgLimits) (collector.Event, error) {
 	if len(b) < execFixedSize {
 		return collector.Event{}, fmt.Errorf("exec record of %d bytes, want at least %d", len(b), execFixedSize)
 	}
@@ -245,9 +245,9 @@ func decodeExec(b []byte) (collector.Event, error) {
 	case flags&fArgsCaptured == 0:
 		ev.Exec.Args = collector.Args{State: collector.ArgsNotCaptured}
 	case flags&fArgsErr != 0:
-		ev.Exec.Args = collector.Args{State: collector.ArgsFailed, Argc: int(le.Uint32(b[execArgc:]))}
+		ev.Exec.Args = collector.Args{State: collector.ArgsFailed, Argc: int(le.Uint32(b[execArgc:])), Limits: lim}
 	default:
-		ev.Exec.Args = collector.ParseArgs(args, flags&fArgsTrunc != 0, int(le.Uint32(b[execArgc:])))
+		ev.Exec.Args = collector.ParseArgs(args, flags&fArgsTrunc != 0, int(le.Uint32(b[execArgc:])), int(le.Uint32(b[execArgsTotal:])), lim)
 	}
 	return ev, nil
 }

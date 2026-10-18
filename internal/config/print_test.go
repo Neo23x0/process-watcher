@@ -27,6 +27,8 @@ exclude:
 
 capture:
   argv: false
+  argv_max_args: 32
+  argv_max_bytes: 4096
 
 kill:
   enabled: false
@@ -128,6 +130,8 @@ exclude:
   scope: all
 capture:
   argv: true
+  argv_max_args: 100
+  argv_max_bytes: 16000
 kill:
   enabled: true
   dry_run: true

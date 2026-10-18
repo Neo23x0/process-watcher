@@ -39,18 +39,18 @@ func TestReadArgsVerifiesTheInstance(t *testing.T) {
 	defer func() { cmd.Process.Kill(); cmd.Wait() }()
 	time.Sleep(50 * time.Millisecond)
 
-	a := ReadArgs(keyOf(t, cmd.Process.Pid, 5_000_000))
+	a := ReadArgs(keyOf(t, cmd.Process.Pid, 5_000_000), collector.ArgLimits{})
 	if a.State != collector.ArgsCaptured || len(a.List) != 3 || a.List[0] != "sleep" || a.List[1] != "30" || a.List[2] != "1" {
 		t.Fatalf("%+v", a)
 	}
 	// A start time in another tick means another instance of the same pid: nothing is read.
-	if a := ReadArgs(keyOf(t, cmd.Process.Pid, 50_000_000)); a.State != collector.ArgsFailed || a.List != nil {
+	if a := ReadArgs(keyOf(t, cmd.Process.Pid, 50_000_000), collector.ArgLimits{}); a.State != collector.ArgsFailed || a.List != nil {
 		t.Fatalf("a different instance must not be read: %+v", a)
 	}
 	// A vanished process fails cleanly, as does an unreadable one.
 	cmd.Process.Kill()
 	cmd.Wait()
-	if a := ReadArgs(collector.Key{TGID: uint32(cmd.Process.Pid), StartNS: 1}); a.State != collector.ArgsFailed {
+	if a := ReadArgs(collector.Key{TGID: uint32(cmd.Process.Pid), StartNS: 1}, collector.ArgLimits{}); a.State != collector.ArgsFailed {
 		t.Fatalf("gone: %+v", a)
 	}
 }
@@ -63,5 +63,33 @@ func TestStartTicksParsesCommWithParentheses(t *testing.T) {
 	b, _ := os.ReadFile("/proc/self/stat")
 	if !strings.Contains(string(b), ") ") || strconv.IntSize == 0 {
 		t.Fatal("unexpected stat format")
+	}
+}
+
+func TestNormalizeCmdline(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  string
+		want string // "" means nil
+	}{
+		{"plain", "sh\x00-c\x00id\x00", "sh\x00-c\x00id\x00"},
+		{"title padded with NULs (php-fpm)", "php-fpm: pool www\x00\x00\x00\x00\x00", "php-fpm: pool www\x00"},
+		{"title without a terminator", "nginx: worker process", "nginx: worker process\x00"},
+		{"an empty argument in the middle is kept", "a\x00\x00b\x00", "a\x00\x00b\x00"},
+		{"trailing empty arguments are padding in a snapshot", "a\x00b\x00\x00\x00", "a\x00b\x00"},
+		{"nothing but NULs", "\x00\x00\x00", ""},
+		{"empty", "", ""},
+	}
+	for _, tc := range tests {
+		got := normalizeCmdline([]byte(tc.raw))
+		if tc.want == "" {
+			if got != nil {
+				t.Errorf("%s: got %q, want nil", tc.name, got)
+			}
+			continue
+		}
+		if string(got) != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }

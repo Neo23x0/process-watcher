@@ -15,6 +15,9 @@ exclude:
 
 capture:
   argv: false                 # arguments may contain credentials: off by default
+  argv_max_args: 32           # arguments kept per exec, 1 to 1024; needs argv: true
+  argv_max_bytes: 4096        # raw bytes kept per exec (arguments plus NUL), 256 to 16383; needs argv: true.
+                              # An argument that this limit cuts is left out of argv and reported in argv_capture
 
 kill:                         # optional reaction to observed descendants, see README
   enabled: false

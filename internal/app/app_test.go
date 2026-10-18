@@ -114,7 +114,7 @@ func newRig(t *testing.T, snap *collector.Snapshot, mutate ...func(*config.Confi
 		Hostname:   func() (string, error) { return "web01", nil },
 		Clock:      fake,
 		CheckPidfd: func() error { return nil },
-		SnapshotArgs: func(k collector.Key) collector.Args {
+		SnapshotArgs: func(k collector.Key, _ collector.ArgLimits) collector.Args {
 			return collector.Args{State: collector.ArgsFailed}
 		},
 	}

@@ -63,7 +63,7 @@ type Options struct {
 	Clock        clock.Clock
 	System       response.System
 	CheckPidfd   func() error
-	SnapshotArgs func(collector.Key) collector.Args
+	SnapshotArgs func(collector.Key, collector.ArgLimits) collector.Args
 	// Hostname defaults to os.Hostname.
 	Hostname func() (string, error)
 	// OpenLog opens the local log; defaults to output.OpenFile. Tests replace
@@ -217,9 +217,11 @@ func (a *App) run(ctx context.Context) (code int, err error) {
 	}
 	defer closeLog()
 
+	argLimits := collector.ArgLimits{MaxArgs: cfg.Capture.ArgvMaxArgs, MaxBytes: cfg.Capture.ArgvMaxBytes}
 	col, err := a.opt.OpenCollector(collector.Options{
 		RingBufferBytes: cfg.Runtime.RingBufferMB << 20,
 		CaptureArgs:     cfg.Capture.Argv,
+		ArgLimits:       argLimits,
 		LiveTable:       cfg.Kill.Enabled,
 	})
 	if err != nil {
@@ -247,13 +249,14 @@ func (a *App) run(ctx context.Context) (code int, err error) {
 	var responder response.Responder
 	if cfg.Kill.Enabled {
 		a.worker = response.NewWorker(response.Options{
-			Factory:  a.factory,
-			Emitter:  a.sink,
-			Rules:    a.rules,
-			System:   a.opt.System,
-			Identity: col,
-			DryRun:   cfg.Kill.DryRun,
-			OnFatal:  func(err error) { a.raise(fmt.Errorf("audit log write: %w", err)) },
+			Factory:   a.factory,
+			Emitter:   a.sink,
+			Rules:     a.rules,
+			System:    a.opt.System,
+			Identity:  col,
+			DryRun:    cfg.Kill.DryRun,
+			ArgLimits: argLimits,
+			OnFatal:   func(err error) { a.raise(fmt.Errorf("audit log write: %w", err)) },
 		})
 		a.worker.Start()
 		responder = a.worker
@@ -270,7 +273,7 @@ func (a *App) run(ctx context.Context) (code int, err error) {
 		DryRun:       cfg.Kill.DryRun,
 		Responder:    responder,
 		AgentPID:     uint32(os.Getpid()),
-		SnapshotArgs: a.opt.SnapshotArgs,
+		SnapshotArgs: func(k collector.Key) collector.Args { return a.opt.SnapshotArgs(k, argLimits) },
 	})
 
 	reason, runErr := a.operate(ctx)

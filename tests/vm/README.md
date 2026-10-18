@@ -197,11 +197,14 @@ with `docker image rm`.
 
 Measured on an Apple M5 Pro Mac, Docker Desktop with 12 CPUs and 8 GB, VMs
 with 4 vCPUs and 2 GiB, QEMU 10.0.13 under TCG, with the collector tests of
-this repository (`./internal/collector/ebpf`: 24 tests and 24 subtests, of
-which the 8 wire/decoder tests need no kernel). Wall-clock seconds, single
-runs, expect a spread of about 15 percent. The full test runs were made three
-VMs at a time (all arm64 kernels, then all amd64 kernels); the boot and
-trivial-test columns were measured one VM at a time.
+this repository (`./internal/collector/ebpf`): 24 tests and 24 subtests when the
+timings below were taken, 27 tests and 29 subtests today, of which the 8
+wire/decoder tests need no kernel and the lockdown test skips on a kernel
+without lockdown. A run of today's suite took 28 to 48 s per VM in the `run.sh`
+total, with one outlier of 83 s. Wall-clock seconds, single runs, expect a spread
+of about 15 percent. The full test runs were made three VMs at a time (all arm64
+kernels, then all amd64 kernels); the boot and trivial-test columns were
+measured one VM at a time.
 
 One-time costs: tool image build 20 s (no cache), kernel package download
 7 to 18 s for the Ubuntu kernels and 45 s for the 100 MB Debian packages,
@@ -211,7 +214,7 @@ A complete cold start with an Ubuntu kernel, tool image already built, took
 
 | guest | kernel | reaches `/init` (guest uptime) | boot, trivial test, power off | complete test binary | `run.sh` total | result |
 | --- | --- | --- | --- | --- | --- | --- |
-| arm64 | `ubuntu-5.15` | 1.7 s | 4 s | 31 s | 38 s | 24 tests, 24 subtests pass |
+| arm64 | `ubuntu-5.15` | 1.7 s | 4 s | 31 s | 38 s | pass (24 tests, 24 subtests) |
 | arm64 | `ubuntu-6.8` | 1.7 s | 4 s | 35 s | 43 s | pass |
 | arm64 | `debian-6.12` | 1.4 s | 3 s | 31 s | 37 s | pass |
 | amd64 | `ubuntu-5.15` | 4.1 s | 6 s | 32 s | 40 s | pass |

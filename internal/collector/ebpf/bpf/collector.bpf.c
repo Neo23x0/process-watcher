@@ -18,6 +18,7 @@ char LICENSE[] SEC("license") = "GPL";
 
 /* Set by the loader before the programs are loaded. */
 const volatile __u32 cfg_capture_args = 0; /* capture argv for every exec */
+const volatile __u32 cfg_args_max = PW_ARGS_DEFAULT; /* raw argument bytes per exec, <= PW_ARGS_MASK */
 const volatile __u32 cfg_live_table = 0;   /* maintain pw_live (kill verification) */
 const volatile __u32 cfg_live_size = 0;    /* entries of pw_live == pid_max */
 
@@ -55,7 +56,9 @@ struct pw_pathbuf {
 #define PW_EXEC_DATA_MASK 0x1fffu
 struct pw_exec_scratch {
 	struct pw_exec e;
-	char data[(PW_EXEC_DATA_MASK + 1) + PW_ARGS_MAX];
+	/* image, filename, parent image and path below PW_EXEC_DATA_MASK, then the
+	 * arguments (at most PW_ARGS_MASK bytes) behind them. */
+	char data[(PW_EXEC_DATA_MASK + 1) + (PW_ARGS_MASK + 1)];
 };
 
 #define PW_SNAP_DATA_MASK 0x7ffu /* image (<=255) + path (<=1024) fit below it */
@@ -431,7 +434,7 @@ int BPF_PROG(pw_sched_process_exec, struct task_struct *p, pid_t old_pid, struct
 	bpf_core_read(&e->parent_comm, sizeof(e->parent_comm), &rp->comm);
 	e->argc = 0;
 	e->args_len = 0;
-	e->reserved = 0;
+	e->args_total = 0;
 
 	/* image: basename of the executed file */
 	e->image_len = 0;
@@ -486,11 +489,14 @@ int BPF_PROG(pw_sched_process_exec, struct task_struct *p, pid_t old_pid, struct
 		off = pw_bound(off + len, PW_EXEC_DATA_MASK);
 	}
 
-	/* raw argv bytes: NUL separated, split and limited to 32 arguments in Go */
+	/* raw argv bytes: NUL separated, at most cfg_args_max of them (the loader keeps it
+	 * <= PW_ARGS_MASK); split and limited in argument count in Go. args_total tells
+	 * how many bytes the process had, so a cut is never silent. */
 	if (cfg_capture_args) {
 		struct mm_struct *mm = BPF_CORE_READ(p, mm);
 		unsigned long as = BPF_CORE_READ(mm, arg_start);
 		unsigned long ae = BPF_CORE_READ(mm, arg_end);
+		__u32 lim = cfg_args_max > PW_ARGS_MASK ? PW_ARGS_MASK : cfg_args_max;
 		__u32 cnt = 0;
 
 		flags |= PW_F_ARGS_CAPTURED;
@@ -498,18 +504,18 @@ int BPF_PROG(pw_sched_process_exec, struct task_struct *p, pid_t old_pid, struct
 		if (ae > as) {
 			unsigned long d = ae - as;
 
-			if (d > PW_ARGS_MAX) {
-				cnt = PW_ARGS_MAX;
+			e->args_total = d > 0xffffffffUL ? 0xffffffffu : (__u32)d;
+			if (d > lim) {
+				cnt = lim;
 				flags |= PW_F_ARGS_TRUNC;
 			} else {
 				cnt = d;
 			}
 		}
-		cnt = pw_bound(cnt, 0x1fffu); /* PW_ARGS_MAX <= 0x1fff */
+		cnt = pw_bound(cnt, PW_ARGS_MASK);
 		if (cnt) {
 			if (bpf_probe_read_user(pw_at(s->data, off, PW_EXEC_DATA_MASK), cnt, (const void *)as) == 0) {
 				e->args_len = cnt;
-				off = pw_bound(off + cnt, PW_EXEC_DATA_MASK);
 			} else {
 				flags |= PW_F_ARGS_ERR;
 				pw_count(PW_STAT_ARGS_ERR);
@@ -518,7 +524,11 @@ int BPF_PROG(pw_sched_process_exec, struct task_struct *p, pid_t old_pid, struct
 	}
 
 	e->flags = flags;
+	/* The fixed parts end at off (<= PW_EXEC_DATA_MASK), the arguments follow them
+	 * (<= PW_ARGS_MASK bytes): two separately bounded terms keep the record inside
+	 * the scratch value for the verifier. */
 	off = pw_bound(off, PW_EXEC_DATA_MASK);
+	off += pw_bound(e->args_len, PW_ARGS_MASK);
 	e->h.size = sizeof(*e) + off;
 	if (bpf_ringbuf_output(&pw_events, e, sizeof(*e) + off, 0))
 		pw_count(PW_STAT_LOST_EXEC);

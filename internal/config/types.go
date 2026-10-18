@@ -55,6 +55,11 @@ type ExcludeConfig struct {
 // CaptureConfig controls optional, potentially sensitive data capture.
 type CaptureConfig struct {
 	Argv bool `yaml:"argv"`
+	// ArgvMaxArgs and ArgvMaxBytes limit the argument capture per exec: at most
+	// that many arguments and that many raw bytes (arguments plus NUL
+	// terminators). They only apply with Argv.
+	ArgvMaxArgs  int `yaml:"argv_max_args"`
+	ArgvMaxBytes int `yaml:"argv_max_bytes"`
 }
 
 // KillConfig describes the optional rule based termination of observed

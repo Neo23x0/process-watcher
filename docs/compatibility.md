@@ -45,9 +45,9 @@ suite is `go test ./internal/collector/ebpf` as a static binary in the guest.
 
 | Kernel | arm64 | amd64 |
 | --- | --- | --- |
-| Ubuntu 5.15.0-198 | 25 passed, 1 skipped (lockdown test) | 25 passed, 1 skipped (lockdown test) |
-| Ubuntu 6.8.0-147 | 25 passed, 1 skipped (lockdown test) | 25 passed, 1 skipped (lockdown test) |
-| Debian 6.12.113 | 25 passed, 1 skipped (lockdown test) | 25 passed, 1 skipped (lockdown test) |
+| Ubuntu 5.15.0-198 | 26 passed, 1 skipped (lockdown test) | 26 passed, 1 skipped (lockdown test) |
+| Ubuntu 6.8.0-147 | 26 passed, 1 skipped (lockdown test) | 26 passed, 1 skipped (lockdown test) |
+| Debian 6.12.113 | 26 passed, 1 skipped (lockdown test) | 26 passed, 1 skipped (lockdown test) |
 | Docker VM 6.12.54 (native) | see [acceptance.md](acceptance.md) | not available |
 
 What the suite checks against the real kernel (stage 1 of the build specification):
@@ -64,7 +64,8 @@ What the suite checks against the real kernel (stage 1 of the build specificatio
 | `TestFailedExecIsNotReported` | A failed `execve` produces no exec event. |
 | `TestImageIsTheExecutedFileNotArgv0` | Symlink and script with shebang: `image` is the executed file (interpreter), not `argv[0]`. |
 | `TestDeletedAndFilelessExecutables` | Deleted programs and `memfd` programs are recognized as such. |
-| `TestLongPathAndArgumentLimits` | Paths above the limit and more than 32 arguments or 4096 bytes are truncated and marked, never wrong. |
+| `TestLongPathAndArgumentLimits` | Paths above the limit and more than 32 arguments or 4096 bytes are truncated and marked, never wrong; the cut argument is kept as the partial argument, with the kernel's total size. |
+| `TestConfigurableArgumentLimits` | The byte limit up to 16383 and the argument count limit are honoured by the kernel program and the decoder; limits outside the range are refused. |
 | `TestReusedPIDGetsANewIdentity` | Forced PID reuse (`ns_last_pid`): the keys differ through the start time. |
 | `TestSnapshotAndLiveShareIdentity` | Snapshot identity and live identity of the same instance are equal. |
 | `TestLossIsCountedInTheKernel` | Overflow of a tiny ring buffer: delivered plus kernel-counted lost records add up to the total. |
@@ -97,7 +98,7 @@ configurations of `capture_args` and `live_table`):
 
 | Program | Linux 5.15 | Linux 6.8 | Linux 6.12 | Kernel limit |
 | --- | --- | --- | --- | --- |
-| `sched_process_exec` | 20,968 (before: 817,206) | 8,237 | 8,175 | 1,000,000 |
+| `sched_process_exec` | 20,795 (before: 817,206) | 8,179 | 8,117 | 1,000,000 |
 | `iter/task` (snapshot) | 12,396 (before: 213,012) | 6,847 | 6,774 | 1,000,000 |
 | `sched_process_fork` | 442 | 235 | 235 | 1,000,000 |
 | `sched_process_exit` | 255 | 241 | 214 | 1,000,000 |

@@ -22,7 +22,9 @@ kernel's loss counters ten times in a row, it exits with code 1 instead of conti
 **Resources.** The process memory is bounded by `runtime.max_processes` (living instances plus ancestors still
 needed); finished entries that are no longer referenced are released. The ring buffer is mapped twice: the RSS is
 about `2 × ring_buffer_mb + 15 MiB`. All queues are bounded. With argument capture enabled every tracked instance
-holds up to 4 KiB of arguments (upper bound of the process memory: `max_processes × 4 KiB` additionally).
+holds up to `capture.argv_max_bytes` of arguments (default 4096; upper bound of the process memory:
+`max_processes × capture.argv_max_bytes` additionally, 1 GiB at the ceiling of 16383 with 65,536 instances). The kernel
+keeps one exec buffer of about 24 KiB per CPU.
 Measurements: [measurements.md](measurements.md).
 
 **Shutdown** (SIGINT/SIGTERM): no new kill actions, complete the waiting actions, stop the capture, process the

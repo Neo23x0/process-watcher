@@ -49,7 +49,7 @@ enum pw_stat {
 #define PW_F_PATH_DELETED   (1u << 3)  /* executable file was unlinked */
 #define PW_F_PATH_ERR       (1u << 4)  /* walk failed: path_len is 0 */
 #define PW_F_ARGS_CAPTURED  (1u << 5)  /* argument capture was enabled */
-#define PW_F_ARGS_TRUNC     (1u << 6)  /* args_len capped at PW_ARGS_MAX */
+#define PW_F_ARGS_TRUNC     (1u << 6)  /* args_len capped at cfg_args_max */
 #define PW_F_ARGS_ERR       (1u << 7)  /* reading user memory failed */
 #define PW_F_FROM_THREAD    (1u << 8)  /* exec called by a non-leader thread */
 #define PW_F_IMAGE_ERR      (1u << 9)  /* image name could not be read */
@@ -61,7 +61,8 @@ enum pw_stat {
 #define PW_PATH_OUT_MAX    1024  /* longest image path put into a record */
 #define PW_PATH_TMP        2048  /* path build buffer (power of two) */
 #define PW_PATH_DEPTH      32    /* dentry/mount hops walked at most */
-#define PW_ARGS_MAX        4096  /* raw argument bytes captured per exec */
+#define PW_ARGS_DEFAULT    4096   /* raw argument bytes captured per exec unless configured */
+#define PW_ARGS_MASK       0x3fffu /* largest loader limit (cfg_args_max) is PW_ARGS_MASK = 16383 */
 
 struct pw_hdr {
 	__u32 type;     /* enum pw_event_type */
@@ -116,8 +117,8 @@ struct pw_exec {
 	__u16 filename_len;
 	__u16 parent_image_len;
 	__u16 path_len;
-	__u32 args_len;
-	__u32 reserved;
+	__u32 args_len;         /* raw argument bytes that follow (<= cfg_args_max) */
+	__u32 args_total;       /* size of the raw argument area at exec, 0 without capture */
 };
 
 /* One living process, written by the iterator through bpf_seq_write. Followed

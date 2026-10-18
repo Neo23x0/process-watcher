@@ -67,9 +67,11 @@ func sameInstance(key collector.Key) (bool, error) {
 // ReadArgs reads the arguments of a living process for a snapshot. The
 // process identity is checked before and after the read, so a pid that was
 // reused in between is never mixed in. Any problem results in ArgsFailed: the
-// arguments are then reported as unavailable, not as empty.
-func ReadArgs(key collector.Key) collector.Args {
-	failed := collector.Args{State: collector.ArgsFailed}
+// arguments are then reported as unavailable, not as empty. The limits are
+// those of the exec time capture; a zero value selects the defaults.
+func ReadArgs(key collector.Key, lim collector.ArgLimits) collector.Args {
+	lim = lim.Normalized()
+	failed := collector.Args{State: collector.ArgsFailed, Limits: lim}
 	if ok, err := sameInstance(key); err != nil || !ok {
 		return failed
 	}
@@ -77,7 +79,7 @@ func ReadArgs(key collector.Key) collector.Args {
 	if err != nil {
 		return failed
 	}
-	buf := make([]byte, collector.MaxArgBytes+1)
+	buf := make([]byte, lim.MaxBytes+1)
 	n, err := io.ReadFull(f, buf)
 	f.Close()
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
@@ -89,9 +91,30 @@ func ReadArgs(key collector.Key) collector.Args {
 	if n == 0 {
 		return failed // kernel thread, zombie or an emptied argv: nothing provable
 	}
-	cut := n > collector.MaxArgBytes
+	cut := n > lim.MaxBytes
 	if cut {
-		n = collector.MaxArgBytes
+		n = lim.MaxBytes
 	}
-	return collector.ParseArgs(buf[:n], cut, 0)
+	raw := buf[:n]
+	if !cut {
+		if raw = normalizeCmdline(raw); raw == nil {
+			return failed
+		}
+	}
+	return collector.ParseArgs(raw, cut, 0, 0, lim)
+}
+
+// normalizeCmdline prepares a complete /proc/<pid>/cmdline for splitting. A process that
+// rewrites its title (php-fpm, nginx) leaves NUL padding behind the title, and its last
+// argument may lack the terminator; neither is an argument. Trailing empty arguments are
+// therefore not reported for processes found by the snapshot (arguments captured at exec
+// are never touched). It returns nil when nothing is left.
+func normalizeCmdline(raw []byte) []byte {
+	trimmed := bytes.TrimRight(raw, "\x00")
+	if len(trimmed) == 0 {
+		return nil
+	}
+	out := make([]byte, 0, len(trimmed)+1)
+	out = append(out, trimmed...)
+	return append(out, 0)
 }

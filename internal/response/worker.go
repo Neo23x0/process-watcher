@@ -56,6 +56,10 @@ type Options struct {
 	System   System
 	Identity Identity
 	DryRun   bool
+	// ArgLimits are the argument capture limits; the re-check right before the
+	// signal reads the arguments with the same limits as the capture did. The
+	// zero value selects the defaults.
+	ArgLimits collector.ArgLimits
 	// OnFatal is called once when an audit event cannot be written. The worker
 	// stops taking actions afterwards.
 	OnFatal func(error)
@@ -328,10 +332,11 @@ func (w *Worker) recheck(a *Action) (Result, bool) {
 		}
 	}
 	if needArgv {
-		raw, more, err := sys.Cmdline(pid, collector.MaxArgBytes)
+		lim := w.o.ArgLimits.Normalized()
+		raw, more, err := sys.Cmdline(pid, lim.MaxBytes)
 		switch {
 		case err == nil:
-			argv = collector.ParseArgs(raw, more, 0).List
+			argv = collector.ParseArgs(raw, more, 0, 0, lim).List
 		case isGone(err):
 			return Result{Outcome: event.OutcomeAlreadyExited}, true
 		}

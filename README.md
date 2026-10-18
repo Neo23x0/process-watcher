@@ -278,9 +278,14 @@ Exclusions are user filters, no proof of harmlessness; a very short string such 
 
 **Off** by default (`capture.argv: false`) because arguments can contain credentials (`curl -u user:pass ...`); enable
 it only if the receivers and the local log are prepared for that. When enabled, arguments are captured at exec **in the
-kernel**, not later from `/proc`: at most **32 arguments** and **4096 raw bytes** per event, as an array and never as a
-joined command line. An overflow is listed in `data_quality.truncated_fields`; a last argument that was only partly
-captured never enters the list. Forks carry the creator's arguments (`argv_state: inherited`); processes that were
+kernel**, not later from `/proc`: at most `capture.argv_max_args` arguments (default 32, up to 1024) and
+`capture.argv_max_bytes` raw bytes (default 4096, up to 16383; flags `--capture-argv-max-args` and
+`--capture-argv-max-bytes`), as an array and never as a joined command line. **An argument that the byte limit cuts is
+omitted from `argv`, not shortened**: a long `sh -c` command then disappears and only the shell and `-c` remain. The
+event says so: `process.argv_complete` is `false` and `process.argv_capture` gives the argument count, the total size,
+the limits and the cut argument's first bytes (`partial`), which is evidence only and never matched by an exclusion or
+a kill rule. Raise the limits (memory and log size grow with them, see [docs/operation.md](docs/operation.md))
+where long inline commands matter. Forks carry the creator's arguments (`argv_state: inherited`); processes that were
 already running at start get theirs from `/proc/<pid>/cmdline` (`snapshot`), verified against the kernel start time of
 the instance so that a reused PID is never mixed up (if that fails, `argv` is `null` with a reason). Environment
 variables are never captured.
@@ -385,11 +390,11 @@ are compared again and what is found is marked `lineage.complete: false` and `da
 snapshot cannot restore lost short-lived processes. A restart begins a new run (new `agent_instance_id`).
 
 Memory is bounded by `runtime.max_processes`, all queues are bounded, and the RSS is about `2 × ring_buffer_mb +
-15 MiB`; with argument capture every tracked instance holds up to 4 KiB of arguments
-([measurements](docs/measurements.md)). On **shutdown** (SIGINT/SIGTERM) waiting kill actions complete, captured events
-are processed, remote queues drain until `runtime.shutdown_timeout` and `agent.stopped` is stored **locally**; no
-artificial exit events are created. A failing final write (full disk) ends the agent with exit code 1. More:
-[docs/operation.md](docs/operation.md).
+15 MiB`; with argument capture every tracked instance holds up to `capture.argv_max_bytes` of arguments
+([measurements](docs/measurements.md)), and the kernel keeps one exec buffer of about 24 KiB per CPU. On **shutdown**
+(SIGINT/SIGTERM) waiting kill actions complete, captured events are processed, remote queues drain until
+`runtime.shutdown_timeout` and `agent.stopped` is stored **locally**; no artificial exit events are created. A failing
+final write (full disk) ends the agent with exit code 1. More: [docs/operation.md](docs/operation.md).
 
 ## Limits
 
