@@ -366,12 +366,14 @@
         "outputs": { "type": "array", "items": { "enum": ["file", "tcp", "udp", "webhook"] } },
         "kill": {
           "type": "object",
-          "required": ["enabled", "dry_run", "fields", "rules"],
+          "required": ["enabled", "dry_run", "fields", "rules", "spare_root_image", "warnings"],
           "additionalProperties": false,
           "properties": {
             "enabled": { "type": "boolean" }, "dry_run": { "type": "boolean" },
             "fields": { "type": "array", "items": { "enum": ["image", "image_path", "argv"] } },
-            "rules": { "type": "integer", "minimum": 0 }
+            "rules": { "type": "integer", "minimum": 0 },
+            "spare_root_image": { "description": "kill.spare_root_image: descendants that run the executable of their root are never killed.", "type": "boolean" },
+            "warnings": { "description": "Rules that probably do more than intended, for example a rule that matches the watched program itself.", "type": "array", "items": { "type": "string" } }
           }
         },
         "log_repair": {
@@ -555,7 +557,7 @@
         "reason": {
           "oneOf": [
             { "type": "null" },
-            { "enum": ["identity_unverified", "identity_mismatch", "match_no_longer_verified", "action_queue_full", "shutdown", "lineage_unconfirmed", "actions_stopped", "already_attempted"] }
+            { "enum": ["identity_unverified", "identity_mismatch", "match_no_longer_verified", "action_queue_full", "shutdown", "lineage_unconfirmed", "root_image_spared", "actions_stopped", "already_attempted"] }
           ]
         },
         "error": {
@@ -571,7 +573,28 @@
         "signal_attempted_at": { "oneOf": [ { "$ref": "#/$defs/utc_time" }, { "type": "null" } ] },
         "signal_attempt_boot_ns": { "oneOf": [ { "$ref": "#/$defs/ns" }, { "type": "null" } ] },
         "decision_latency_ns": { "description": "Trigger record to decision; may be negative by a few microseconds because both clocks are sampled independently.", "type": "string", "pattern": "^-?[0-9]+$" },
-        "attempt_latency_ns": { "oneOf": [ { "type": "string", "pattern": "^-?[0-9]+$" }, { "type": "null" } ] }
+        "attempt_latency_ns": { "oneOf": [ { "type": "string", "pattern": "^-?[0-9]+$" }, { "type": "null" } ] },
+        "chain": {
+          "description": "The ancestors of the target, root first, with their executables and arguments as they were at the decision: the decision explains itself without the events of the ancestors. Bounded: at most 8 ancestors (the root and the nearest ones, see chain_truncated), at most 2048 bytes of arguments each.",
+          "type": "array",
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/chain_link" }
+        },
+        "chain_truncated": { "description": "Ancestors between the root and the nearest ones are not listed in chain.", "type": "boolean" }
+      }
+    },
+    "chain_link": {
+      "type": "object",
+      "required": ["process_id", "pid", "image", "image_path", "exec_index", "argv", "argv_complete"],
+      "additionalProperties": false,
+      "properties": {
+        "process_id": { "$ref": "#/$defs/process_id" },
+        "pid": { "type": "integer", "minimum": 0 },
+        "image": { "$ref": "#/$defs/nullable_string" },
+        "image_path": { "$ref": "#/$defs/nullable_string" },
+        "exec_index": { "type": "integer", "minimum": 0 },
+        "argv": { "description": "Null when capture.argv is off or the arguments are not available.", "oneOf": [ { "type": "array", "items": { "type": "string" } }, { "type": "null" } ] },
+        "argv_complete": { "description": "false when the ancestor's own capture was incomplete or the size limit of the chain cut the list.", "oneOf": [ { "type": "boolean" }, { "type": "null" } ] }
       }
     }
   }

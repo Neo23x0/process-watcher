@@ -25,6 +25,7 @@ kill:
     - demo-long-running-helper
   regex:
     - '^(useradd|usermod)$'
+  spare_root_image: false    # true: never kill a descendant that runs its root's executable
 ```
 
 | YAML | Flag |
@@ -34,6 +35,7 @@ kill:
 | `kill.fields` | `--kill-field` (repeatable) |
 | `kill.strings` | `--kill-string` (repeatable) |
 | `kill.regex` | `--kill-regex` (repeatable) |
+| `kill.spare_root_image` | `--kill-spare-root-image` |
 
 **Matching.** Every string is a literal, case-sensitive substring (`strings.Contains`, independent of
 `watch.ignore_case`). Regexes are Go `regexp` (RE2; no PCRE), compiled once at load and checked with `MatchString`:
@@ -55,6 +57,20 @@ string. To match only the program that was actually started, choose `fields: [im
 observed root (or an intermediate process), it therefore matches every direct child already at `process.fork`, before
 the child starts its own program; the root itself is never killed. Rules should aim at the image of the **unwanted**
 program.
+
+**Protecting a service from its own rule.** A service master (php-fpm, apache2, nginx) forks its workers with its own
+image, and a master that reloads executes itself again and forks a new master. A rule that matches that image, for
+example `php` while `php-fpm` is watched, therefore hits every worker as it is forked and every worker that exists at
+start; the master survives only because it is a root, and the service loses all its workers (measured against a real
+PHP-FPM behind nginx: 9,501 signals in 3 seconds, requests answered with 502). Two safeguards exist:
+
+- `check-config` prints a warning, and the agent logs one and lists it in `agent.started` (`details.kill.warnings`),
+  when a kill string is contained in a watch pattern or a kill regex matches one (for `image` and `image_path`).
+- `kill.spare_root_image: true` never kills a descendant whose executable is the one its root had when it was admitted
+  (compared by path, by image name when a path is unknown). The decision is audited as `response.kill_result` with
+  `outcome: skipped`, `reason: root_image_spared` and counted in `agent.health` (`response.skipped`). It spares workers
+  and a re-executed master; what a worker starts, and a worker that replaces itself with another program by exec, is
+  still judged by the rules. It is off by default so that existing rule sets keep their meaning.
 
 **Validation.** Rejected are empty strings and regexes, syntactically invalid regexes, unknown fields and an empty
 field list (error messages name the path and the list index). When the feature is enabled at least one rule is
@@ -115,11 +131,19 @@ independent of exclusions and output depth. `details` contains among others `act
 distances to the triggering kernel event (`decision_latency_ns`, `attempt_latency_ns`). Outcomes: `dry_run`,
 `signal_sent`, `already_exited`, `permission_denied`, `error`, `skipped` with a reason (`identity_unverified`,
 `identity_mismatch`, `match_no_longer_verified`, `action_queue_full`, `shutdown`, `lineage_unconfirmed`,
-`actions_stopped`). A `response.kill_result` without a preceding `kill_requested` exists only for
-`lineage_unconfirmed`. The later `process.exit` of the instance carries `details.response_action_id` (a correlation,
+`root_image_spared`, `actions_stopped`). A `response.kill_result` without a preceding `kill_requested` exists only for
+`lineage_unconfirmed` and `root_image_spared`. `details.chain` lists the ancestors of the target from the root to its
+direct parent (at most 8, the root and the nearest ones; `chain_truncated`) with `process_id`, `pid`, `image`,
+`image_path`, `exec_index` and `argv` (at most 2 KiB each, `argv_complete`), so the decision explains itself without the
+earlier events. The later `process.exit` of the instance carries `details.response_action_id` (a correlation,
 no causal claim) and only exit/signal data that were actually captured. An agent crash can leave an open `pending`.
 `agent.health` contains the counters: rule hits, signal attempts, signals accepted by the kernel, targets already
 gone, skipped actions by reason, errors, dry-run actions, queue length and latency.
+
+**Confirmation.** `signal_sent` only says that the kernel accepted the signal. For a long-running target the exit
+confirms it (`process.exit` with `details.signal: 9` and the same `response_action_id`); a short-lived program can end
+by itself just before the signal arrives, with the signal still accepted (measured with `sh -c 'uname -s'`: about 60 %
+of 200 shells ended with SIGKILL, the rest had finished first).
 
 **Privileges.** Besides root, `CAP_BPF`, `CAP_PERFMON`, `CAP_KILL` (signals to other users' processes) and
 `CAP_SYS_PTRACE` (`/proc/<pid>/exe` of other users' processes for the re-check) are needed. Without permission the

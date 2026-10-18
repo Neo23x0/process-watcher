@@ -72,6 +72,11 @@ func NewKillEvent(f *event.Factory, a *Action, typ string, r Result) *event.Even
 		lat := strconv.FormatInt(int64(r.AttemptBootNS)-int64(a.TriggerBootNS), 10)
 		d.AttemptLatencyNS = &lat
 	}
+	d.Chain = a.Chain
+	if d.Chain == nil {
+		d.Chain = []event.ChainLink{}
+	}
+	d.ChainTruncated = a.ChainTruncated
 	ev.Details = d
 	return ev
 }

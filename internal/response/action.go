@@ -49,6 +49,9 @@ type Action struct {
 	Root        *event.Root
 	Lineage     *event.Lineage
 	DataQuality event.DataQuality
+	// Chain are the ancestors with their arguments (root first), see event.KillDetails.
+	Chain          []event.ChainLink
+	ChainTruncated bool
 
 	// RequestedEventID is the event id of the response.kill_requested event.
 	RequestedEventID string

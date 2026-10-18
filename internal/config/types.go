@@ -73,6 +73,11 @@ type KillConfig struct {
 	Strings []string `yaml:"strings"`
 	// Regex are Go regular expressions (regexp.MatchString, unanchored).
 	Regex []string `yaml:"regex"`
+	// SpareRootImage never kills a descendant whose executable is the same file
+	// as the one of its root. A service master forks workers (and re-executes
+	// itself on a reload) with that image, so a rule that matches the service's
+	// own name would otherwise kill the service. Off by default.
+	SpareRootImage bool `yaml:"spare_root_image"`
 }
 
 // OutputsConfig groups the local file and the optional remote outputs.

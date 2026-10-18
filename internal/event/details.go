@@ -77,6 +77,11 @@ type KillStatus struct {
 	DryRun  bool     `json:"dry_run"`
 	Fields  []string `json:"fields"`
 	Rules   int      `json:"rules"`
+	// SpareRootImage mirrors kill.spare_root_image.
+	SpareRootImage bool `json:"spare_root_image"`
+	// Warnings name rules that probably do more than intended (for example a
+	// rule that matches the watched service itself).
+	Warnings []string `json:"warnings"`
 }
 
 // LogRepair reports the repair of a torn last line in the local log.
@@ -224,6 +229,7 @@ const (
 	SkipActionQueueFull    = "action_queue_full"
 	SkipShutdown           = "shutdown"
 	SkipLineageUnconfirmed = "lineage_unconfirmed"
+	SkipRootImageSpared    = "root_image_spared"
 	SkipActionsDisabled    = "actions_stopped"
 	SkipAlreadyAttempted   = "already_attempted"
 )
@@ -267,4 +273,26 @@ type KillDetails struct {
 	SignalAttemptBootNS *string `json:"signal_attempt_boot_ns"`
 	DecisionLatencyNS   string  `json:"decision_latency_ns"`
 	AttemptLatencyNS    *string `json:"attempt_latency_ns"`
+	// Chain lists the ancestors of the target from the root down to its direct
+	// parent with their executables and arguments as they were when the decision
+	// was made: the decision explains itself even when the events of the ancestors
+	// are not at hand (excluded, beyond the depth limit, in another log). It is
+	// bounded; ChainTruncated says that ancestors between the root and the nearest
+	// ones are left out.
+	Chain          []ChainLink `json:"chain"`
+	ChainTruncated bool        `json:"chain_truncated"`
+}
+
+// ChainLink is one ancestor in KillDetails.Chain.
+type ChainLink struct {
+	ProcessID string  `json:"process_id"`
+	PID       uint32  `json:"pid"`
+	Image     *string `json:"image"`
+	ImagePath *string `json:"image_path"`
+	ExecIndex int     `json:"exec_index"`
+	// Argv is the argument vector of the ancestor, limited in size; null when the
+	// arguments are not captured or not available. ArgvComplete is false when the
+	// ancestor's own capture was incomplete or the size limit of the chain cut it.
+	Argv         []string `json:"argv"`
+	ArgvComplete *bool    `json:"argv_complete"`
 }

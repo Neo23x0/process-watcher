@@ -70,6 +70,8 @@ var flagSpecs = []flagSpec{
 		"Kill rule: literal, case-sensitive substring (ORed with all other rules)."},
 	{"kill-regex", "kill.regex", "REGEX", secKill,
 		"Kill rule: Go (RE2) regular expression. It is unanchored: use ^ and $ for the whole value and (?i) to ignore case."},
+	{"kill-spare-root-image", "kill.spare_root_image", "", secKill,
+		"Never kill a descendant that runs the same executable as its watched root (a service master forks workers with that image and re-executes itself on reload). Recommended whenever the watch pattern is also a substring of a kill rule."},
 
 	{"log-file", "outputs.file.path", "PATH", secLog,
 		"Mandatory local JSONL log. A relative path is resolved against the working directory."},

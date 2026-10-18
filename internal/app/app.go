@@ -262,18 +262,19 @@ func (a *App) run(ctx context.Context) (code int, err error) {
 		responder = a.worker
 	}
 	a.engine = proctree.New(proctree.Options{
-		Factory:      a.factory,
-		Emitter:      a.sink,
-		Matcher:      filter.NewMatcher(cfg.Watch.ImageContains, cfg.Watch.IgnoreCase),
-		Exclusions:   filter.NewExclusions(cfg.Exclude.ImageContains, cfg.Exclude.ArgvContains, cfg.Watch.IgnoreCase),
-		MaxDepth:     cfg.Watch.MaxDepth,
-		MaxProcesses: cfg.Runtime.MaxProcesses,
-		CaptureArgv:  cfg.Capture.Argv,
-		Kill:         a.rules,
-		DryRun:       cfg.Kill.DryRun,
-		Responder:    responder,
-		AgentPID:     uint32(os.Getpid()),
-		SnapshotArgs: func(k collector.Key) collector.Args { return a.opt.SnapshotArgs(k, argLimits) },
+		Factory:            a.factory,
+		Emitter:            a.sink,
+		Matcher:            filter.NewMatcher(cfg.Watch.ImageContains, cfg.Watch.IgnoreCase),
+		Exclusions:         filter.NewExclusions(cfg.Exclude.ImageContains, cfg.Exclude.ArgvContains, cfg.Watch.IgnoreCase),
+		MaxDepth:           cfg.Watch.MaxDepth,
+		MaxProcesses:       cfg.Runtime.MaxProcesses,
+		CaptureArgv:        cfg.Capture.Argv,
+		Kill:               a.rules,
+		DryRun:             cfg.Kill.DryRun,
+		KillSpareRootImage: cfg.Kill.SpareRootImage,
+		Responder:          responder,
+		AgentPID:           uint32(os.Getpid()),
+		SnapshotArgs:       func(k collector.Key) collector.Args { return a.opt.SnapshotArgs(k, argLimits) },
 	})
 
 	reason, runErr := a.operate(ctx)
@@ -358,6 +359,9 @@ func (a *App) raise(err error) {
 func (a *App) operate(ctx context.Context) (string, error) {
 	if err := a.emitStarted(); err != nil {
 		return "fatal_error", err
+	}
+	for _, w := range KillWarnings(a.cfg) {
+		a.log.Warn("kill rule reaches the watched program", "detail", w)
 	}
 	res, snap, buffered, err := a.reconcile(proctree.DiscoveryStartup)
 	if err != nil {

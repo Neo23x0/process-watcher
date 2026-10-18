@@ -83,7 +83,7 @@ type Counters struct {
 // skipReasons are all reasons a worker can report; counters are kept per reason.
 var skipReasons = []string{
 	event.SkipIdentityUnverified, event.SkipIdentityMismatch, event.SkipMatchNoLongerVerif,
-	event.SkipActionQueueFull, event.SkipShutdown, event.SkipLineageUnconfirmed, event.SkipActionsDisabled,
+	event.SkipActionQueueFull, event.SkipShutdown, event.SkipLineageUnconfirmed, event.SkipRootImageSpared, event.SkipActionsDisabled,
 }
 
 // Worker executes kill actions one at a time. The queue is bounded; nothing

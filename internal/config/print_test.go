@@ -36,6 +36,7 @@ kill:
   fields: [image]
   strings: []
   regex: []
+  spare_root_image: false
 
 outputs:
   file:
@@ -138,6 +139,7 @@ kill:
   fields: [image, image_path, argv, argv]
   strings: ["demo-long-running-helper", "multi\nline", " lead", "trail ", "'single'", "~"]
   regex: ['^(useradd|usermod)$', '(?i)\bcurl\b', '"quoted"', '\\']
+  spare_root_image: true
 outputs:
   file:
     path: /var/log/pw/my events.jsonl

@@ -51,9 +51,11 @@ func (a *App) emitStarted() error {
 		CaptureArgv:        a.cfg.Capture.Argv,
 		Outputs:            a.outputNames(),
 		Kill: event.KillStatus{
-			Enabled: a.cfg.Kill.Enabled,
-			DryRun:  a.cfg.Kill.DryRun,
-			Fields:  append([]string{}, a.cfg.Kill.Fields...),
+			Enabled:        a.cfg.Kill.Enabled,
+			DryRun:         a.cfg.Kill.DryRun,
+			Fields:         append([]string{}, a.cfg.Kill.Fields...),
+			SpareRootImage: a.cfg.Kill.SpareRootImage,
+			Warnings:       KillWarnings(a.cfg),
 		},
 	}
 	if a.cfg.Capture.Argv {

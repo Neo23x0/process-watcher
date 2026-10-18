@@ -37,9 +37,12 @@ type Options struct {
 	CaptureArgv  bool
 
 	// Kill enables the response feature when non-nil.
-	Kill      *killrule.Rules
-	DryRun    bool
-	Responder response.Responder
+	Kill   *killrule.Rules
+	DryRun bool
+	// KillSpareRootImage never kills a descendant that runs the same executable
+	// as its root (see config.KillConfig.SpareRootImage).
+	KillSpareRootImage bool
+	Responder          response.Responder
 	// AgentPID is never a kill target.
 	AgentPID uint32
 
@@ -67,6 +70,7 @@ type Stats struct {
 	DuplicateBirths                                uint64
 	KillHits                                       uint64
 	KillIneligible                                 uint64
+	KillSpared                                     uint64 // hits spared because the target runs its root's executable
 }
 
 // Engine is the process model.
@@ -249,7 +253,7 @@ func (e *Engine) onUnknownExec(ev collector.Event) error {
 		i.parentOut = e.parentOf(parent, event.RelExecParent)
 		i.GapAffected = true
 	} else {
-		e.makeRoot(i, x.Image, x.ImageOK)
+		e.makeRoot(i, x.Image, x.ImageOK, x.Path)
 		e.wantReconcile = true
 		if !ev.Parent.IsZero() {
 			po := &event.Parent{
@@ -394,7 +398,7 @@ func (e *Engine) newInstance(k collector.Key, knownSince uint64) *Instance {
 func (e *Engine) bootID() string { return e.o.Factory.Host.BootID }
 
 // makeRoot turns i into a tree root and remembers why it was admitted.
-func (e *Engine) makeRoot(i *Instance, image string, ok bool) {
+func (e *Engine) makeRoot(i *Instance, image string, ok bool, path collector.Path) {
 	i.Role = event.RoleRoot
 	i.Depth = 0
 	i.Root = i
@@ -402,6 +406,10 @@ func (e *Engine) makeRoot(i *Instance, image string, ok bool) {
 	if ok {
 		s, _ := event.Sanitize(image)
 		i.admitImage = &s
+	}
+	if path.Known && !path.Truncated && path.Value != "" {
+		v := path.Value
+		i.admitPath = &v
 	}
 	i.rootOut = &event.Root{ProcessID: i.ID, PID: i.Key.TGID, Image: i.admitImage}
 }

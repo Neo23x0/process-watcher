@@ -30,6 +30,7 @@ var specTable = []struct {
 	{"kill.fields", "kill-field", true},
 	{"kill.strings", "kill-string", true},
 	{"kill.regex", "kill-regex", true},
+	{"kill.spare_root_image", "kill-spare-root-image", false}, // extension: protects service workers
 	{"outputs.file.path", "log-file", false},
 	{"outputs.file.rotate_size_mb", "log-rotate-size-mb", false},
 	{"outputs.file.keep_files", "log-keep-files", false},

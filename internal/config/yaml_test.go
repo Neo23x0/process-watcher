@@ -389,7 +389,7 @@ outputs:
 		t.Errorf("kill example loaded as %+v (argv capture %v)", k, r.Config.Capture.Argv)
 	}
 
-	defaults := "kill:\n  enabled: false\n  dry_run: false\n  fields: [image]\n  strings: []\n  regex: []\n"
+	defaults := "kill:\n  enabled: false\n  dry_run: false\n  fields: [image]\n  strings: []\n  regex: []\n  spare_root_image: false\n"
 	r = mustResolve(t, newFakeEnv().cwdFile(base+defaults))
 	if !reflect.DeepEqual(r.Config.Kill, Default().Kill) {
 		t.Errorf("kill defaults loaded as %+v", r.Config.Kill)

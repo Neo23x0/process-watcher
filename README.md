@@ -345,7 +345,11 @@ truncated values are no basis for a match.
 
 **Inherited image.** A new process carries its creator's image until its own exec, so a rule matching the image of an
 observed root (or an intermediate process) also matches every direct child already at `process.fork`. Aim rules at the
-image of the **unwanted** program.
+image of the **unwanted** program. A service master forks its workers with its own image: a rule such as `php` next to
+the watch pattern `php-fpm` kills the workers (measured on a real PHP-FPM: thousands of signals in seconds, requests
+answered with 502). `check-config` and `agent.started` warn when a rule matches a watch pattern, and
+`kill.spare_root_image: true` (`--kill-spare-root-image`) never kills a descendant that runs the executable of its root
+(audited as `skipped` / `root_image_spared`).
 
 **Evaluation** happens at `process.exec`, `process.discovered` and `process.fork` (inherited image and path only),
 **before** the output exclusions: `exclude.*` and `watch.max_depth` do not shield a target. If the assignment to a root
@@ -369,8 +373,10 @@ Identity check and signal are not atomic: the same instance can still exec in be
 
 **Audit.** `response.kill_requested` and exactly one `response.kill_result` share `details.action_id`
 (`details.trigger_event_id` names the trigger). Outcomes: `dry_run`, `signal_sent`, `already_exited`,
-`permission_denied`, `error`, `skipped` (with a reason). The later `process.exit` carries `details.response_action_id`
-(a correlation, no causal claim). A crash can leave an open `pending`.
+`permission_denied`, `error`, `skipped` (with a reason). `details.chain` lists the ancestors from the root to the
+parent with their images and arguments, so the decision reads without the earlier events. The later `process.exit`
+carries `details.response_action_id` (a correlation, no causal claim); `details.signal: 9` there, not `signal_sent`,
+confirms a death. A crash can leave an open `pending`.
 
 **Privileges.** root, or `CAP_BPF`, `CAP_PERFMON`, `CAP_KILL` (other users' processes) and `CAP_SYS_PTRACE` (the
 re-check). Without permission the agent reports `permission_denied` and keeps observing; without

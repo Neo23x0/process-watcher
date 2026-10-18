@@ -167,7 +167,7 @@ func (e *Engine) discover(rec *collector.SnapProc, parent *Instance, byKey map[c
 	i.GapAffected = e.gapOpen
 
 	if parent == nil {
-		e.makeRoot(i, rec.Image, rec.ImageOK)
+		e.makeRoot(i, rec.Image, rec.ImageOK, rec.Path)
 		switch {
 		case byKey[rec.Parent] != nil:
 			pp := byKey[rec.Parent]

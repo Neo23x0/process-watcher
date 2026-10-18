@@ -85,6 +85,8 @@ var validationCases = []struct {
 	{name: "kill duplicate argv flagged twice", args: []string{"--kill-enabled=true", "--kill-string", "x", "--kill-field", "argv", "--kill-field", "argv"}, paths: []string{"kill.fields[0]", "kill.fields[1]"}},
 	{name: "kill without rules and argv", args: []string{"--kill-enabled=true", "--kill-field", "argv"}, paths: []string{"kill.enabled", "kill.fields[0]"}},
 	{name: "kill dry run alone", args: []string{"--kill-dry-run"}},
+	{name: "kill spare root image alone", args: []string{"--kill-spare-root-image"}},
+	{name: "kill spare root image with rules", args: []string{"--kill-enabled=true", "--kill-string", "php", "--kill-spare-root-image=true"}},
 	{name: "kill spec one-liner", args: []string{"--capture-argv=true", "--kill-enabled=true", "--kill-field", "image", "--kill-field", "argv", "--kill-string", "demo-long-running-helper", "--kill-regex", "^(useradd|usermod)$"}},
 
 	// local log

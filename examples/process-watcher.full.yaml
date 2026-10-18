@@ -25,6 +25,7 @@ kill:                         # optional reaction to observed descendants, see R
   fields: ["image"]           # image, image_path, argv (argv needs capture.argv: true)
   strings: []
   regex: []
+  spare_root_image: false     # never kill a descendant that runs its root's executable (a service's own workers)
 
 outputs:
   file:

@@ -63,6 +63,9 @@ func realMain(args []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stdout, "kill rules: %d string(s), %d regex(es), fields %v; %s\n",
 				len(r.Config.Kill.Strings), len(r.Config.Kill.Regex), r.Config.Kill.Fields, mode)
 			fmt.Fprintln(stdout, "check-config never sends a signal.")
+			for _, w := range app.KillWarnings(r.Config) {
+				fmt.Fprintf(stdout, "warning: %s\n", w)
+			}
 		}
 		return app.ExitOK
 	case config.CommandPrintConfig:

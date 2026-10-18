@@ -25,6 +25,9 @@ type Instance struct {
 	// admitImage is the image the root had when it was admitted; later execs
 	// never overwrite it.
 	admitImage *string
+	// admitPath is the executable path the root had when it was admitted (nil if
+	// it was unknown or cut); kill.spare_root_image compares against it.
+	admitPath *string
 
 	// Current attributes.
 	Image          string
