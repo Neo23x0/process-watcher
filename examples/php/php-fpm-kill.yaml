@@ -12,6 +12,9 @@
 #    agent.started warn about that; spare_root_image: true prevents it.
 #  - Code that runs entirely inside a worker (no fork, no exec) is invisible to these rules, and a root
 #    (the php-fpm master) is never a target.
+#  - The netcat and socat family are symlinks or alternatives on most distributions: verified with the
+#    real agent against Debian 13 (nc -> nc.openbsd, socat -> socat1, telnet -> inetutils-telnet) and by
+#    executable path against Rocky 9 (nc -> ncat, socat and telnet unversioned). See docs/php.md.
 config_version: 1
 watch:
   image_contains: ["php-fpm"]
@@ -28,7 +31,8 @@ kill:
   regex:
     - '^(sh|dash|bash|zsh|ksh|ash)$'
     - '^python[0-9.]*$'
-    - '^(perl|ruby|nc|ncat|netcat|socat|telnet)$'
+    - '^(perl|ruby[0-9.]*)$'
+    - '^(nc|nc\.openbsd|nc\.traditional|ncat|socat[0-9]*|telnet|inetutils-telnet)$'
     - '^php[0-9.]*$'
   spare_root_image: true
 

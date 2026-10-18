@@ -103,6 +103,98 @@ func TestArchiveIsDeterministicAndComplete(t *testing.T) {
 	}
 }
 
+func TestWriteArchiveCreatesSubdirectoryHeaders(t *testing.T) {
+	entries := []entry{
+		{"process-watcher", 0o755, []byte("\x7fELF binary")},
+		{"process-watcher.yaml", 0o644, []byte("config_version: 1\n")},
+		{"LICENSE", 0o644, []byte("license text\n")},
+		{"php/a.yaml", 0o644, []byte("a\n")},
+		{"php/b.yaml", 0o644, []byte("b\n")},
+	}
+	mtime := time.Unix(1_700_000_000, 0).UTC()
+	path := filepath.Join(t.TempDir(), "a.tar.gz")
+	if err := writeArchive(path, "pw_v0.1.0_linux_amd64", entries, mtime); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(zr)
+	var names []string
+	types := map[string]byte{}
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, h.Name)
+		types[h.Name] = h.Typeflag
+		if h.Typeflag == tar.TypeDir && h.Mode != 0o755 {
+			t.Errorf("%s: directory mode %o, want 0755", h.Name, h.Mode)
+		}
+	}
+	want := "pw_v0.1.0_linux_amd64/ pw_v0.1.0_linux_amd64/process-watcher " +
+		"pw_v0.1.0_linux_amd64/process-watcher.yaml pw_v0.1.0_linux_amd64/LICENSE " +
+		"pw_v0.1.0_linux_amd64/php/ pw_v0.1.0_linux_amd64/php/a.yaml pw_v0.1.0_linux_amd64/php/b.yaml"
+	if got := strings.Join(names, " "); got != want {
+		t.Errorf("archive entries:\n got %s\nwant %s", got, want)
+	}
+	if types["pw_v0.1.0_linux_amd64/php/"] != tar.TypeDir {
+		t.Error("php/ has no directory header")
+	}
+	// The subdirectory header is written exactly once even though two entries share it.
+	n := 0
+	for _, name := range names {
+		if name == "pw_v0.1.0_linux_amd64/php/" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("php/ directory header written %d times, want 1", n)
+	}
+}
+
+func TestLoadPHPExamples(t *testing.T) {
+	entries, err := loadPHPExamples(filepath.Join("..", "..", "examples", "php"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) < 6 {
+		t.Fatalf("expected the shipped PHP examples, found %d", len(entries))
+	}
+	prev := ""
+	for _, e := range entries {
+		if !strings.HasPrefix(e.name, "php/") || !strings.HasSuffix(e.name, ".yaml") {
+			t.Errorf("entry name %q is not php/*.yaml", e.name)
+		}
+		if e.mode != 0o644 {
+			t.Errorf("%s: mode %o, want 0644", e.name, e.mode)
+		}
+		if len(e.data) == 0 {
+			t.Errorf("%s: empty", e.name)
+		}
+		if prev != "" && e.name <= prev {
+			t.Errorf("entries not sorted: %q after %q", e.name, prev)
+		}
+		prev = e.name
+	}
+	if _, err := loadPHPExamples(filepath.Join(t.TempDir(), "no-such-dir")); err == nil {
+		t.Error("a missing directory passed")
+	}
+	empty := t.TempDir()
+	if _, err := loadPHPExamples(empty); err == nil {
+		t.Error("a directory without *.yaml files passed")
+	}
+}
+
 func TestSumsLineIsWhatSha256sumReads(t *testing.T) {
 	// echo -n abc | sha256sum
 	const want = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad  x.tar.gz\n"

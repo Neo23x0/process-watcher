@@ -87,9 +87,11 @@ sha256sum --check --ignore-missing SHA256SUMS
 gh attestation verify process-watcher_${VERSION}_linux_${ARCH}.tar.gz --repo Neo23x0/process-watcher   # build provenance
 ```
 
-Every archive holds exactly three files: the **single static binary** (eBPF programs embedded; nothing else is needed
-at run time), the commented example configuration `process-watcher.yaml` and the `LICENSE`. Only `amd64` and `arm64`
-are provided: the eBPF collector assumes 64-bit kernel pointers, so 32-bit kernels (x86, ARM) are not supported.
+Every archive holds the **single static binary** (eBPF programs embedded; nothing else is needed at run time), the
+commented example configuration `process-watcher.yaml`, the `LICENSE`, and below `php/` the PHP deployment
+configurations of [docs/php.md](docs/php.md), usable right away (`process-watcher --config php/php-fpm-dry-run.yaml`).
+Only `amd64` and `arm64` are provided: the eBPF collector assumes 64-bit kernel pointers, so 32-bit kernels (x86, ARM)
+are not supported.
 
 ### As a systemd service
 

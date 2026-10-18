@@ -9,9 +9,10 @@ name: Release
 # dash) a pre-release. The tag must point at a commit of main.
 #
 # The release contains one archive per architecture (linux/amd64, linux/arm64)
-# with the single static binary, the example configuration process-watcher.yaml
-# and the LICENSE, plus SHA256SUMS. The archives are built by tools/release;
-# `make release-archives VERSION=v0.1.0` produces the same bytes locally.
+# with the single static binary, the example configuration process-watcher.yaml,
+# the LICENSE, and below php/ the PHP deployment configurations of docs/php.md,
+# plus SHA256SUMS. The archives are built by tools/release; `make
+# release-archives VERSION=v0.1.0` produces the same bytes locally.
 #
 # Every action is pinned to a commit (the comment names the version);
 # Dependabot proposes updates.
@@ -121,7 +122,8 @@ jobs:
           sha256sum --check --ignore-missing SHA256SUMS
           tar xzf "process-watcher_${TAG}_linux_${ARCH}.tar.gz"
           dir="$PWD/process-watcher_${TAG}_linux_${ARCH}"
-          test "$(find "$dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = "LICENSE process-watcher process-watcher.yaml "
+          test "$(find "$dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = "LICENSE php process-watcher process-watcher.yaml "
+          test "$(find "$dir/php" -mindepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = "apache-mod-php.yaml php-cgi.yaml php-cli-workers.yaml php-fpm-dry-run.yaml php-fpm-kill-signatures.yaml php-fpm-kill.yaml php-fpm-observe.yaml "
           file "$dir/process-watcher"
           file "$dir/process-watcher" | grep -q 'statically linked'
           test "$("$dir/process-watcher" --version | cut -d' ' -f2)" = "$TAG"
@@ -129,6 +131,8 @@ jobs:
           cd /tmp
           "$dir/process-watcher" check-config | tee check.out
           grep -q "$dir/process-watcher.yaml" check.out
+          # The PHP configurations shipped below php/ are usable right away, without cloning the repository.
+          "$dir/process-watcher" check-config --config "$dir/php/php-fpm-dry-run.yaml"
           # Informational: can this binary load its eBPF programs on the kernel of this runner?
           sudo "$dir/process-watcher" doctor || echo "::warning::doctor reported problems on this runner kernel (see the log)"
 
@@ -156,13 +160,15 @@ jobs:
           sha256sum --check --ignore-missing SHA256SUMS
           tar xzf "process-watcher_${TAG}_linux_${ARCH}.tar.gz"
           dir="$PWD/process-watcher_${TAG}_linux_${ARCH}"
-          test "$(find "$dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = "LICENSE process-watcher process-watcher.yaml "
+          test "$(find "$dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = "LICENSE php process-watcher process-watcher.yaml "
+          test "$(find "$dir/php" -mindepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = "apache-mod-php.yaml php-cgi.yaml php-cli-workers.yaml php-fpm-dry-run.yaml php-fpm-kill-signatures.yaml php-fpm-kill.yaml php-fpm-observe.yaml "
           file "$dir/process-watcher"
           file "$dir/process-watcher" | grep -q 'statically linked'
           test "$("$dir/process-watcher" --version | cut -d' ' -f2)" = "$TAG"
           cd /tmp
           "$dir/process-watcher" check-config | tee check.out
           grep -q "$dir/process-watcher.yaml" check.out
+          "$dir/process-watcher" check-config --config "$dir/php/php-fpm-dry-run.yaml"
           sudo "$dir/process-watcher" doctor || echo "::warning::doctor reported problems on this runner kernel (see the log)"
 
   release:

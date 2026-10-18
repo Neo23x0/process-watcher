@@ -10,3 +10,11 @@ RUN printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod +x /usr/sbin
       php8.4-fpm php8.4-cli php8.4-cgi \
       curl ca-certificates procps jq python3 netcat-openbsd util-linux psmisc iproute2 \
  && rm -rf /var/lib/apt/lists/*
+# The tools named in examples/php/php-fpm-kill.yaml's response rules (netcat-openbsd above is one of
+# them already): on Debian several execute under a name that differs from the command used to start
+# them (nc -> nc.openbsd or nc.traditional, socat -> socat1, telnet -> inetutils-telnet), which is why
+# the rules and docs/php.md name every variant found. Installed so that difference can be verified
+# against the real agent instead of assumed.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends socat ncat netcat-traditional telnet ruby \
+ && rm -rf /var/lib/apt/lists/*

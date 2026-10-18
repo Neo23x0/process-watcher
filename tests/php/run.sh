@@ -9,7 +9,7 @@
 # patterns (php-fpm, apache2, nginx, php) on that VM.
 set -u
 cd "$(dirname "$0")/../.." || exit 1
-IMAGE=${PW_PHP_IMAGE:-pw-php-lab:trixie}
+IMAGE=${PW_PHP_IMAGE:-pw-php-lab:trixie-2}
 CONTAINER=pw-php-lab-run
 ARCH=$(docker info --format '{{.Architecture}}' | sed 's/aarch64/arm64/;s/x86_64/amd64/')
 

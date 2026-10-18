@@ -20,7 +20,8 @@ Everything below was checked on real processes. Section 9 says exactly where and
 4. Know the blind spot: **code that runs inside a worker and starts no process is invisible** (section 5).
 
 Ready-made configurations are in [examples/php/](../examples/php/); `process-watcher check-config --config <file>`
-validates one.
+validates one. They also ship inside every release archive under `php/`, so they are usable right after unpacking,
+without cloning the repository (see the README's install steps).
 
 ## 2. Which executable to watch
 
@@ -85,8 +86,9 @@ jq -r 'select(.event_type=="process.discovered" and .lineage.role=="root") | "\(
 | Apache with mod_php | [apache-mod-php.yaml](../examples/php/apache-mod-php.yaml) | `--watch-image-contains apache2 --watch-image-contains httpd --capture-argv=true --capture-argv-max-bytes 16383 --capture-argv-max-args 64` |
 | php-cgi, FastCGI daemon | [php-cgi.yaml](../examples/php/php-cgi.yaml) | `--watch-image-contains php-cgi --capture-argv=true ...` |
 | PHP CLI workers | [php-cli-workers.yaml](../examples/php/php-cli-workers.yaml) | `--watch-image-contains php8. --capture-argv=true ...` |
-| FPM, response rules as a dry run | [php-fpm-dry-run.yaml](../examples/php/php-fpm-dry-run.yaml) | the observe line plus `--kill-enabled=true --kill-dry-run=true --kill-spare-root-image=true --kill-field image --kill-regex '^(sh\|dash\|bash\|zsh\|ksh\|ash)$' --kill-regex '^python[0-9.]*$' --kill-regex '^(perl\|ruby\|nc\|ncat\|netcat\|socat\|telnet)$' --kill-regex '^php[0-9.]*$'` |
+| FPM, response rules as a dry run | [php-fpm-dry-run.yaml](../examples/php/php-fpm-dry-run.yaml) | the observe line plus `--kill-enabled=true --kill-dry-run=true --kill-spare-root-image=true --kill-field image --kill-regex '^(sh\|dash\|bash\|zsh\|ksh\|ash)$' --kill-regex '^python[0-9.]*$' --kill-regex '^(perl\|ruby[0-9.]*)$' --kill-regex '^(nc\|nc\.openbsd\|nc\.traditional\|ncat\|socat[0-9]*\|telnet\|inetutils-telnet)$' --kill-regex '^php[0-9.]*$'` |
 | FPM, real termination | [php-fpm-kill.yaml](../examples/php/php-fpm-kill.yaml) | the same with `--kill-dry-run=false` |
+| FPM, kill rules plus your own argv signatures | [php-fpm-kill-signatures.yaml](../examples/php/php-fpm-kill-signatures.yaml) | the same image-identity rules, with placeholder entries to fill in (section 6) |
 
 What each covers and misses is in the tables of sections 2 and 5. No single pattern is right for every host.
 
@@ -215,12 +217,22 @@ still judged by the rules.
 
 Recommended rules (see the examples): exact names of shells and interpreters, `fields: [image]`. Verified on the real
 service: a shell and a PHP CLI interpreter started by a worker were killed with SIGKILL and ended with signal 9; an
-ordinary program started the same way and all workers were untouched.
+ordinary program started the same way and all workers were untouched. By construction this already covers every
+reverse or bind shell written in these interpreters, whatever its source code: it has to execute as one of them.
+
+[php-fpm-kill-signatures.yaml](../examples/php/php-fpm-kill-signatures.yaml) adds an optional second layer, matching
+your own command-line signatures against `argv` (field: `argv`, requires `capture.argv: true`). process-watcher ships
+no such patterns itself: a literal match is brittle (renamed variables, a different encoding, an added `eval` defeat
+it; this layer catches reuse of a known payload, not adaptation) and shares the `argv` blind spots below (code read
+from stdin, a file or assembled at runtime is invisible, and a cut argument never matches). The file has placeholder
+entries and the reasoning in full; fill in your own patterns, validate with `check-config`, and review a dry run
+before switching it on.
 
 | Pitfall | Reason |
 | --- | --- |
 | `sh` is a symlink | the image is `dash` (Debian, Ubuntu), `bash` (RHEL), `busybox` (Alpine, where it is also the image of `uname` and everything else) |
 | versioned interpreter names | Python runs as `python3.13`, PHP as `php8.4`: use `^python[0-9.]*$`, `^php[0-9.]*$` (the second does not match `php-fpm8.4`) |
+| `nc`, `socat`, `telnet` are rarely the literal name | distribution alternatives rewrite them. Verified with the real agent on Debian 13: `nc` execs as `nc.openbsd` or `nc.traditional`, `socat` as `socat1`, `telnet` as `inetutils-telnet`. Verified by executable path on Rocky 9: `nc` execs as `ncat`, `socat` and `telnet` keep their plain names. `ruby` is `ruby3.3` on Debian, `ruby` (unversioned) on Rocky. Not checked on Alpine (its `nc` is the `busybox` applet, already covered above). `examples/php/php-fpm-kill.yaml` lists the names found so far; discover more with the read-only commands of section 2 |
 | false positives | PHP applications start mailers, image and PDF converters, `git`, `composer`; Python, Bash and PHP CLI are investigation signals, not proof |
 | argument rules (`fields: [argv]`) | only complete arguments are matched: an omitted argument cannot fire a rule, a cut one never matches |
 | exclusions | `exclude.*` only filter the reports; an excluded helper's later descendants are still observed and still subject to the rules |
@@ -307,7 +319,16 @@ arm64, native CPU), all 15 lab runs (108 checks) without a failing check; the 23
 Rocky 9 and the official php images. The GitHub-hosted runners (kernel 6.17) have not run these changes: the code of
 release v0.1.0 passed there, the changes of this guide came after it.
 
+Verified (2026-10-18): the executable names of `nc`, `socat`, `telnet`, `perl`, `ruby`, `python3`, `bash` and `sh` with
+the real agent against Debian 13 (`nc.openbsd`, `nc.traditional`, `socat1`, `inetutils-telnet`, `perl`, `ruby3.3`,
+`python3.13`, `bash`, `dash`); the same set by executable path (not through the agent) on Rocky 9 (`ncat`, `socat`,
+`telnet`, `perl`, `ruby`, `python3.9`, `bash`, `bash`). Not run through PHP's own process functions, only invoked
+directly under the agent's watch; the matching code path (`killrule.Match`) is the same one the PHP lab's `killrules`
+scenarios already exercise through real FPM workers.
+
 Not verified: any real vulnerability or exploit (none was used); PHP-FPM with the `chroot` pool option (a plain chroot was
 checked); `proc_open` with a command string; mailers and other legitimate helpers; FPM under heavy production load and
 the cost of the larger limits there; other kernels and distributions; real amd64 hardware (latency numbers are from
-the arm64 Docker VM only); other PHP versions than 8.4 in behavior.
+the arm64 Docker VM only); other PHP versions than 8.4 in behavior; `nc`/`socat`/`telnet`/`ruby`/`perl` executable names
+on Alpine or any distribution other than Debian 13 and Rocky 9; any command-line signature for a specific shell payload
+(process-watcher ships none, see section 6).

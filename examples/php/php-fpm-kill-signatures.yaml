@@ -1,0 +1,64 @@
+# PHP-FPM: the same response rules as php-fpm-kill.yaml, with a second, optional layer for your own
+# command-line signatures. Read php-fpm-kill.yaml and php-fpm-dry-run.yaml first.
+#
+# The rules below (image identity) already cover every reverse or bind shell written in these
+# interpreters, no matter what its source code says: such a shell has to execute as one of these
+# programs. Matching a specific command line in addition can still be useful as a second, independent
+# layer, for example against a known, unmodified payload. process-watcher ships no such patterns because:
+#
+#  - they are brittle by construction: renaming a variable, changing the encoding, or adding a layer of
+#    eval or base64 defeats a literal or near-literal match. This layer catches reuse, not adaptation.
+#  - argv matching only ever sees what reaches the executed program as an argument. Code read from stdin,
+#    a file, an environment variable or assembled at runtime inside the interpreter never appears here
+#    (the same blind spot as the rest of the kill feature, see docs/php.md section 5).
+#  - a cut argument can never match (docs/kill-rules.md, "Validation"): keep your patterns well inside
+#    capture.argv_max_bytes, and know that a payload longer than the limit silently stops matching.
+#  - every rule is OR-combined with every other rule and reported together (docs/kill-rules.md,
+#    "Matching"): a bad pattern only adds false positives or false negatives of its own, it does not
+#    weaken the image-identity rules above it.
+#
+# Fill in your own patterns in the regex list below (uncomment, replace the placeholder). Each one is a
+# Go RE2 regular expression tested against one argument at a time (field: argv), unanchored by default:
+# anchor with ^ and $ for the whole argument. Validate the YAML and every regex with:
+#
+#   process-watcher check-config --config examples/php/php-fpm-kill-signatures.yaml
+#
+# then run with kill.dry_run: true (the default below) and review response.kill_requested /
+# response.kill_result in your own traffic before ever switching to dry_run: false.
+config_version: 1
+watch:
+  image_contains: ["php-fpm"]
+
+capture:
+  argv: true
+  argv_max_bytes: 16383
+  argv_max_args: 64
+
+kill:
+  enabled: true
+  dry_run: true                # flip to false only after reviewing hits in your own traffic
+  fields: ["image", "argv"]
+  regex:
+    # --- Image identity (verified names; see php-fpm-kill.yaml) ---
+    - '^(sh|dash|bash|zsh|ksh|ash)$'
+    - '^python[0-9.]*$'
+    - '^(perl|ruby[0-9.]*)$'
+    - '^(nc|nc\.openbsd|nc\.traditional|ncat|socat[0-9]*|telnet|inetutils-telnet)$'
+    - '^php[0-9.]*$'
+
+    # --- Your own command-line signatures (field: argv; each checked against one argument) ---
+    # Uncomment and replace with a vetted pattern. One entry per line, grouped by language/shape so an
+    # audit hit (details.rules[].ref in docs/kill-rules.md) says which category fired.
+    # - 'PLACEHOLDER_BASH_REVERSE_SHELL'     # e.g. a /dev/tcp redirection shape
+    # - 'PLACEHOLDER_BASH_BIND_SHELL'
+    # - 'PLACEHOLDER_PYTHON_REVERSE_SHELL'   # e.g. a socket+dup2+subprocess shape
+    # - 'PLACEHOLDER_PYTHON_BIND_SHELL'
+    # - 'PLACEHOLDER_PERL_REVERSE_SHELL'     # e.g. a Socket+open2/exec shape
+    # - 'PLACEHOLDER_PERL_BIND_SHELL'
+    # - 'PLACEHOLDER_OTHER_1'
+    # - 'PLACEHOLDER_OTHER_2'
+  spare_root_image: true
+
+outputs:
+  file:
+    path: /var/log/process-watcher/events.jsonl

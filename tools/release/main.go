@@ -8,10 +8,12 @@
 //
 //	<out>/process-watcher_<version>_linux_<arch>.tar.gz
 //
-// with exactly three files below one directory of the same name: the binary
-// process-watcher, the example configuration process-watcher.yaml (the agent
-// finds a configuration next to its binary by itself) and the LICENSE. A file
-// <out>/SHA256SUMS lists the archives.
+// with one directory of the same name holding: the binary process-watcher,
+// the example configuration process-watcher.yaml (the agent finds a
+// configuration next to its binary by itself), the LICENSE, and below php/
+// every file of examples/php/ (the PHP deployment configurations of
+// docs/php.md) so they are usable right after unpacking, without cloning the
+// repository. A file <out>/SHA256SUMS lists the archives.
 //
 // Archive metadata is fixed (owner root, modification time from
 // SOURCE_DATE_EPOCH or the time of the last commit, sorted entries, no gzip
@@ -63,15 +65,18 @@ func checkVersion(v string) error {
 	return nil
 }
 
-// entry is one file of an archive.
+// entry is one file of an archive; a name with slashes lies in a subdirectory
+// (for example "php/php-fpm-dry-run.yaml").
 type entry struct {
 	name string
 	mode int64
 	data []byte
 }
 
-// writeArchive writes a deterministic .tar.gz: one directory, the entries in the
-// given order, owner root, the same modification time everywhere.
+// writeArchive writes a deterministic .tar.gz: one top-level directory, a
+// directory header right before the first entry of each subdirectory, the
+// entries in the given order, owner root, the same modification time
+// everywhere.
 func writeArchive(path, dir string, entries []entry, mtime time.Time) error {
 	var buf bytes.Buffer
 	zw, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
@@ -86,7 +91,21 @@ func writeArchive(path, dir string, entries []entry, mtime time.Time) error {
 	if err := tw.WriteHeader(hdr(dir+"/", 0o755, 0, tar.TypeDir)); err != nil {
 		return err
 	}
+	madeDir := map[string]bool{}
 	for _, e := range entries {
+		for i := 0; i < len(e.name); i++ {
+			if e.name[i] != '/' {
+				continue
+			}
+			sub := dir + "/" + e.name[:i+1]
+			if madeDir[sub] {
+				continue
+			}
+			madeDir[sub] = true
+			if err := tw.WriteHeader(hdr(sub, 0o755, 0, tar.TypeDir)); err != nil {
+				return err
+			}
+		}
 		if err := tw.WriteHeader(hdr(dir+"/"+e.name, e.mode, int64(len(e.data)), tar.TypeReg)); err != nil {
 			return err
 		}
@@ -101,6 +120,30 @@ func writeArchive(path, dir string, entries []entry, mtime time.Time) error {
 		return err
 	}
 	return os.WriteFile(path, buf.Bytes(), 0o644)
+}
+
+// loadPHPExamples reads every *.yaml file directly below dir (not recursive),
+// sorted by name, as archive entries below "php/". It requires at least one
+// file, so an emptied or misspelled directory is a build error, not a
+// silently thinner archive.
+func loadPHPExamples(dir string) ([]entry, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("no *.yaml files in %s", dir)
+	}
+	sort.Strings(matches)
+	entries := make([]entry, 0, len(matches))
+	for _, m := range matches {
+		data, err := os.ReadFile(m)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry{"php/" + filepath.Base(m), 0o644, data})
+	}
+	return entries, nil
 }
 
 // sumsLine formats one line of SHA256SUMS ("<hash>  <name>", as sha256sum -c reads it).
@@ -181,6 +224,7 @@ func run() error {
 	root := flag.String("root", ".", "repository root")
 	config := flag.String("config", filepath.Join("examples", "process-watcher.full.yaml"), "configuration file shipped as process-watcher.yaml, relative to -root")
 	license := flag.String("license", "LICENSE", "license file, relative to -root")
+	phpExamples := flag.String("php-examples", filepath.Join("examples", "php"), "directory of PHP example configurations shipped below php/, relative to -root")
 	epoch := flag.Int64("source-date-epoch", 0, "modification time of the archive entries in seconds (default: SOURCE_DATE_EPOCH or the last commit)")
 	flag.Parse()
 
@@ -215,6 +259,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	phpEntries, err := loadPHPExamples(filepath.Join(*root, *phpExamples))
+	if err != nil {
+		return err
+	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
 	}
@@ -239,11 +287,12 @@ func run() error {
 		}
 		dir := fmt.Sprintf("process-watcher_%s_linux_%s", *version, t.goarch)
 		name := dir + ".tar.gz"
-		err = writeArchive(filepath.Join(*out, name), dir, []entry{
+		archiveEntries := append([]entry{
 			{"process-watcher", 0o755, data},
 			{"process-watcher.yaml", 0o644, cfg},
 			{"LICENSE", 0o644, lic},
-		}, mtime)
+		}, phpEntries...)
+		err = writeArchive(filepath.Join(*out, name), dir, archiveEntries, mtime)
 		if err != nil {
 			return err
 		}
