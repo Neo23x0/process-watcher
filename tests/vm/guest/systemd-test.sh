@@ -816,9 +816,16 @@ journal_since() { journal | awk -v t0="$1" '{ t = $0; sub(/^\[ */, "", t); sub(/
 restart_gaps() {
 	journal_since "${1:-0}" | sed -n 's/^\[ *\([0-9.]*\)\].*Scheduled restart job.*/\1/p' | awk 'NR>1 {printf "%.1f ", $1-prev} {prev=$1}' | sed 's/ $//'
 }
-# in_restart_pause: the unit waits for its scheduled restart. Only here ExecMainStatus is the
-# exit status of the last run; once the restarted agent runs again it reads 0.
-in_restart_pause() { [ "$(prop SubState)" = auto-restart ]; }
+# pause_snapshot: succeeds while the unit waits for its scheduled restart and leaves its properties in SNAP
+# (snap_prop <name> reads one). Only in that pause is ExecMainStatus the exit status of the last run; once the
+# restarted agent runs again it reads 0. It is ONE systemctl call, so that SubState, NRestarts and
+# ExecMainStatus belong to the same moment: separate calls can straddle the restart, which is slow under
+# emulation (a check that read them one by one failed on amd64 under TCG).
+pause_snapshot() {
+	SNAP=$(systemctl show -p SubState -p Result -p ExecMainStatus -p NRestarts "$UNIT_NAME" 2> /dev/null)
+	grep -q '^SubState=auto-restart$' <<< "$SNAP"
+}
+snap_prop() { sed -n "s/^$1=//p" <<< "$SNAP"; }
 
 scn_S7a() {
 	begin S7a "invalid configuration (unknown key): exit code 2, no flapping"
@@ -882,15 +889,15 @@ scn_S7b() {
 		t0=$(up)
 		timeout 120 systemctl start "$UNIT_NAME" > /dev/null 2>&1
 		sleep 22
-		# sample in the pause before a restart: a restarted agent that is running again would
-		# read ExecMainStatus=0 (that made this check flaky on slow CPUs)
-		wait_until 15 in_restart_pause
-		n=$(prop NRestarts)
-		st=$(prop ExecMainStatus)
+		# sample in the pause before a restart, in one call: a restarted agent that is running again
+		# would read ExecMainStatus=0 (that made this check flaky on slow CPUs)
+		wait_until 15 pause_snapshot
+		n=$(snap_prop NRestarts)
+		st=$(snap_prop ExecMainStatus)
 		el=$(since "$t0")
 		gaps=$(restart_gaps "$t0")
 		jtxt=$(journal_since "$t0") # this path only, not what the previous one left in the journal
-		info "S7b path $p after $el s: SubState=$(prop SubState) Result=$(prop Result) ExecMainStatus=$st NRestarts=$n; seconds between restarts: $gaps"
+		info "S7b path $p after $el s: SubState=$(snap_prop SubState) Result=$(snap_prop Result) ExecMainStatus=$st NRestarts=$n; seconds between restarts: $gaps"
 		printf '%s\n' "$jtxt" | grep -E 'process-watcher\[|Scheduled restart|Main process exited|Failed with' | sed -n 1,8p | ev
 		assert_eq S7b.1 "$p: exit status of the agent" "$st" 1
 		if grep -q 'status=1/FAILURE' <<< "$jtxt"; then pass "S7b.2 $p: the journal shows status=1/FAILURE"; else fail "S7b.2 $p: no status=1/FAILURE in the journal"; fi
