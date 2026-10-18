@@ -90,6 +90,26 @@ Also: `TestKillOnForkWithInheritedImage` (evaluation at `process.fork` with inhe
 names; the test binary serves as the helper, no user accounts are changed and no `useradd` is run. The actual end of
 the process is verified at the kernel in addition to the audit.
 
+## PHP use case ([php.md](php.md))
+
+The PHP guide has its own evidence. The Agent tests use PHP-shaped helper programs (a service master, workers, `/bin/sh`,
+`/bin/true`, a copy of `sleep`), the lab uses the real nginx, Apache and PHP 8.4 of Debian 13
+([tests/php](../tests/php/README.md)).
+
+| Scenario | Tests |
+| --- | --- |
+| Which executable to watch for NGINX/Apache + FPM, mod_php, php-cgi, CLI; watches that see nothing | Agent `TestPHPWatchTargetsFollowTheExecutionModel`, `TestPHPWatchSubstringsSelectTheExpectedExecutables`; lab `deployments:*` |
+| Shell, interpreter and direct launches below a worker keep their command lines | Agent `TestPHPSpawnedProgramsKeepTheirCommandLines`; lab `argv` |
+| Long arguments around the default limit, an inline script that starts near the end, configurable limits, flags, refused values | Agent `TestPHPInlineCommandsAroundTheDefaultLimit`, `TestPHPInlineCodeThatStartsNearTheEndOfTheCapture`, `TestPHPConfigurableArgumentLimitsKeepLongInlineCommands`, `TestPHPArgumentLimitFlagsAreEquivalentToYAML`, `TestPHPArgumentLimitsOutsideTheSupportedRangeAreRefused`; Collector `TestLongPathAndArgumentLimits`, `TestConfigurableArgumentLimits`; Unit `TestParseArgs*`, `TestArgLimitsNormalized`, `TestStartedReportsTheCaptureLimits` |
+| Completeness is explicit; a cut argument never matches | Unit `TestCompleteArgvIsMarkedComplete`, `TestIncompleteArgvCarriesTheEvidence`, `TestThePartialArgumentNeverFeedsARule`, `TestPartialArgumentIsSanitized`; Agent `TestPHPLargeArgumentsSurviveEveryTransport` (file, TCP, webhook identical; UDP drops what exceeds the datagram limit) |
+| Short-lived programs, exited parents, worker replacement, reload, fork without exec | Agent `TestPHPShortLivedProgramsAndExitedParents`, `TestPHPWorkerReplacingItsExecutableIsOneProcessWithTwoExecs`, `TestPHPWorkerReplacementKeepsTheTree`, `TestPHPReloadReexecutesTheMasterAndForksANewOne`, `TestPHPForkWithoutExecIsAForkWithTheInheritedImage`; lab `fpm-lifecycle` |
+| Activity inside the worker (a network connection without a child process) | Agent `TestPHPInProcessNetworkConnectionIsNotAProcessEvent`; lab `blindspot` (a documented blind spot, not a covered case) |
+| A broad rule kills the workers; the guard prevents it; narrow rules, dry run, roots | Agent `TestPHPBroadKillRuleKillsTheWorkersItWasMeantToProtect`, `TestPHPSpareRootImageKeepsWorkersAliveAndStillKillsHelpers`, `TestPHPNarrowRulesKillShellsAndInterpretersButNotWorkers`, `TestPHPDryRunReportsWithoutKilling`, `TestPHPRootsAreNeverKilled`, `TestPHPWorkerThatReplacesItselfWithAKillableProgramIsKilled`; Unit `TestBroadRuleHitsForkedWorkersWithoutTheGuard`, `TestSpareRootImage*`, `TestKillWarnings`, `TestStartedReportsTheKillSafeguards`; lab `killrules:*` |
+| The kill audit explains itself | Agent `TestPHPKillAuditExplainsItselfThroughTheChain`; Unit `TestKillAuditListsTheAncestorsWithTheirArguments`, `TestKillChain*` |
+| Reaction time against slow and fast programs | Agent `TestPHPKillReactionAgainstSlowAndFastPrograms` (measurement); lab `latency` (numbers in [php.md](php.md#6-response-rules)) |
+
+No test uses an exploit, a payload or a vulnerability: every program that the tests start is a harmless fixed command.
+
 ## Runs that actually took place (as of 2026-10-17)
 
 | Run | Environment | Result |
@@ -97,33 +117,38 @@ the process is verified at the kernel in addition to the audit.
 | `go vet ./...` | macOS, `GOOS=linux` for `arm64` and `amd64` | clean |
 | `go test -race ./...` | macOS arm64 | all packages passed |
 | `go test ./...` as a non-root user on Linux (what the CI unit job does) | Linux arm64 container | all packages passed; tests that need the agent binary or root skip without them and run when `PW_AGENT_BIN` is set |
-| Fuzz `FuzzYAMLDocument`, `FuzzCommandLine` | 30 s each | 503,000 and 701,520 executions, no failure |
-| `make test-race-docker` | Linux arm64 container | 14 packages passed |
-| `make test-docker`, three complete runs (the last one on the final tree) | Docker VM, kernel 6.12.54, arm64, native | 98 passed, 0 failed, 2 skipped each (lockdown test, measurement test), about 3 min 10 s; `procfs` 3, `response` 16, `collector` 25, agent 54. One further attempt on the final tree stopped before the end-to-end binary started (`./e2e.test: not found`, a file-sharing glitch of Docker Desktop: the file existed and the immediate repeat passed) |
-| `tools/ci/kernel-tests.sh` (the privileged job of the CI workflow) | privileged container, kernel 6.12.54, arm64 | 98 passed, 0 failed, 2 skipped |
-| `make bench-docker` | as above, no parallel VM | see [measurements.md](measurements.md) |
-| Collector suite, 3 kernels × 2 architectures | QEMU (emulated CPU) | 25 passed, 0 failed, 1 skipped (the lockdown test, which needs a locked-down kernel) on each of the six combinations, 25 to 66 s per VM; run on the final tree |
-| Collector lockdown test with `lockdown=confidentiality` | the same six combinations | passed on all six |
-| Agent end-to-end (`make test-vm-e2e`) | Ubuntu 5.15, arm64, QEMU | 54 passed, 0 failed, 1 skipped (measurement test), 342 s |
-| Agent end-to-end | Ubuntu 5.15, amd64, QEMU | 54 passed, 0 failed, 1 skipped, 466 s |
-| Agent end-to-end | Ubuntu 6.8, arm64, QEMU | 54 passed, 0 failed, 1 skipped, 366 s |
-| Agent end-to-end | Debian 6.12, arm64, QEMU | 54 passed, 0 failed, 1 skipped, 324 s |
-| Agent end-to-end | Ubuntu 6.8, amd64, QEMU | 54 passed, 0 failed, 1 skipped, 523 s |
-| Agent end-to-end | Debian 6.12, amd64, QEMU | 54 passed, 0 failed, 1 skipped, 503 s |
-| systemd service (`make test-vm-systemd`), scenarios S1 to S8 | QEMU guest (emulated CPU) with **systemd 249.11 as PID 1** (Ubuntu 22.04 userland), the unit installed by `packaging/install.sh`; all six combinations: Ubuntu 5.15, Ubuntu 6.8 and Debian 6.12, each on arm64 and amd64 | 140 checks passed, 0 failed on each combination, 196 to 222 s per run (three runs in parallel). Covered: `systemd-analyze verify` and `security` (exposure 4.9, "OK"), installation and file modes, start under the hardened unit (capability set, no new privileges, seccomp, host PID namespace and `/proc` view, log directory `0700`/`0600`), observation under the unit (roots, descendants, other users, programs below `/root`, processes that existed before the start, no loss), the kill feature with and without `CAP_KILL`, clean `systemctl stop` (exit 0, `agent.stopped`, no restart), invalid configuration (exit 2, no restart loop), a log path outside `LogsDirectory` (bounded restart loop, then fixed by the documented `ReadWritePaths=` drop-in), `SIGKILL` of the main process (restart after `RestartSec`, new `agent_instance_id`), missing privileges (exit 3, no restart) and every hardening directive in effect. One warning per run: `SystemCallArchitectures=native` cannot be tested because the guest cannot execute a binary of another ABI |
+| Fuzz `FuzzYAMLDocument`, `FuzzCommandLine` | 30 s each, final tree | 566,462 and 998,035 executions, no failure |
+| `make test-race-docker` | Linux arm64 container | 14 packages passed (final tree) |
+| `make test-docker` (the tree with the PHP changes) | Docker VM, kernel 6.12.54, arm64, native | 123 passed, 0 failed, 2 skipped (lockdown test, measurement test), about 3 min 30 s; `procfs` 4, `response` 16, `collector` 26, agent 77. The tree of v0.1.0 passed 98 (three runs); one attempt stopped before the end-to-end binary started (`./e2e.test: not found`, a file-sharing glitch of Docker Desktop: the file existed and the immediate repeat passed) |
+| `tools/ci/kernel-tests.sh` (the privileged job of the CI workflow) | privileged container, kernel 6.12.54, arm64 | 123 passed, 0 failed, 2 skipped, 3 min 27 s |
+| PHP lab (`tests/php/run.sh`, see [tests/php](../tests/php/README.md)) | Docker VM (kernel 6.12.54, arm64, native); Debian 13 with nginx 1.26.3, Apache 2.4.69 (prefork with mod_php, event with proxy_fcgi, mod_fcgid) and PHP 8.4.26 (FPM, CGI, CLI), the real agent | 15 runs, 108 checks passed, 0 failed, about 4 minutes with the lab image already built |
+| `tests/php/names-images.sh` | Docker: official `php` images (fpm, fpm-alpine, apache, cli), Ubuntu 24.04, Debian 12, Rocky 9 | executable names and image paths read from the real systems (behind the tables of [php.md](php.md#2-which-executable-to-watch)); no behavior checks |
+| `make bench-docker`, three runs on the final tree | as above, nothing else running | no lost record, CPU per process start within about 10 % of the measurement of the v0.1.0 tree; see [measurements.md](measurements.md) |
+| Collector suite, 3 kernels × 2 architectures | QEMU (emulated CPU) | 26 passed, 0 failed, 1 skipped (the lockdown test, which needs a locked-down kernel) on each of the six combinations, 28 to 83 s per VM; run on the final tree |
+| Collector lockdown test with `lockdown=confidentiality` | the same six combinations | passed on all six (final tree) |
+| Agent end-to-end (`make test-vm-e2e`, final tree, 77 tests including the 23 PHP tests) | Ubuntu 5.15, arm64, QEMU | 77 passed, 0 failed, 1 skipped (measurement test), 424 s. A first batch on the tree before the last test fix failed on this combination: one PHP test read the exit event of `/bin/true` before the agent had logged it and panicked (a test race under emulation, not an agent defect); the test now waits for that event, and all six combinations were run again from the start |
+| Agent end-to-end | Ubuntu 5.15, amd64, QEMU | 77 passed, 0 failed, 1 skipped, 581 s |
+| Agent end-to-end | Ubuntu 6.8, arm64, QEMU | 77 passed, 0 failed, 1 skipped, 454 s |
+| Agent end-to-end | Debian 6.12, arm64, QEMU | 77 passed, 0 failed, 1 skipped, 400 s |
+| Agent end-to-end | Ubuntu 6.8, amd64, QEMU | 77 passed, 0 failed, 1 skipped, 655 s |
+| Agent end-to-end | Debian 6.12, amd64, QEMU | 77 passed, 0 failed, 1 skipped, 612 s |
+| systemd service (`make test-vm-systemd`), scenarios S1 to S8 | QEMU guest (emulated CPU) with **systemd 249.11 as PID 1** (Ubuntu 22.04 userland), the unit installed by `packaging/install.sh`; all six combinations: Ubuntu 5.15, Ubuntu 6.8 and Debian 6.12, each on arm64 and amd64 | 140 checks passed, 0 failed on each combination, 195 to 220 s per run (three runs in parallel; final tree, final test script). A first run of the tree with the PHP changes failed one check on amd64 Debian 6.12 (S7b.1: the test read the agent's exit status and the restart count in separate `systemctl` calls, and the restart pause ended between them, a race of the test under emulation); the check now takes one snapshot, S7b then passed three times in a row on that combination, and the complete suite was run again on all six. Covered: `systemd-analyze verify` and `security` (exposure 4.9, "OK"), installation and file modes, start under the hardened unit (capability set, no new privileges, seccomp, host PID namespace and `/proc` view, log directory `0700`/`0600`), observation under the unit (roots, descendants, other users, programs below `/root`, processes that existed before the start, no loss), the kill feature with and without `CAP_KILL`, clean `systemctl stop` (exit 0, `agent.stopped`, no restart), invalid configuration (exit 2, no restart loop), a log path outside `LogsDirectory` (bounded restart loop, then fixed by the documented `ReadWritePaths=` drop-in), `SIGKILL` of the main process (restart after `RestartSec`, new `agent_instance_id`), missing privileges (exit 3, no restart) and every hardening directive in effect. One warning per run: `SystemCallArchitectures=native` cannot be tested because the guest cannot execute a binary of another ABI |
 | Release tooling `tools/release` | macOS, Docker (arm64 native, amd64 emulated) | unit tests pass; two builds give byte-identical archives (same `SHA256SUMS`); both binaries are verified static ELF files; extracted from the archive they run (`--version`, `check-config`) in a bare Debian container and find the shipped configuration next to the binary |
 | Workflows `ci.yml` and `release.yml` | `actionlint` 1.7.12 | no findings. The commands of both were run locally before the first run on GitHub |
-| CI workflow (`ci.yml`), first run on `main` | GitHub-hosted runners `ubuntu-24.04` and `ubuntu-24.04-arm`, kernel `6.17.0-1022-azure` (BTF present, lockdown `none`), the privileged tests run directly on the runner through `sudo` | Vet and unit tests with the race detector, the release dry run, the workflow lint and the reproducibility of the embedded eBPF object passed. `tools/ci/kernel-tests.sh` on amd64 and on arm64: 97 passed, 1 failed, 2 skipped (lockdown test, measurement test) each. The one failure was `TestWithoutPrivilegesTheAgentRefusesWithExitCode3`: the unprivileged test user could not reach the agent binary below `/home/runner`. The test now starts a copy from its own world-accessible directory (checked locally by putting the agent into a directory only root can enter) |
+| CI workflow (`ci.yml`), first run on `main` | GitHub-hosted runners `ubuntu-24.04` and `ubuntu-24.04-arm`, kernel `6.17.0-1022-azure` (BTF present, lockdown `none`), the privileged tests run directly on the runner through `sudo` | Vet and unit tests with the race detector, the release dry run, the workflow lint and the reproducibility of the embedded eBPF object passed. `tools/ci/kernel-tests.sh` on amd64 and on arm64: 97 passed, 1 failed, 2 skipped (lockdown test, measurement test) each. The one failure was `TestWithoutPrivilegesTheAgentRefusesWithExitCode3`: the unprivileged test user could not reach the agent binary below `/home/runner`. The test now starts a copy from its own world-accessible directory (checked locally by putting the agent into a directory only root can enter); the next run (commit e805063) passed all five jobs, including both kernel jobs |
+| Release workflow (`release.yml`), tag `v0.1.0` on commit e805063 | GitHub Actions | passed: verification of the tag, build of both archives, smoke tests of the shipped archives on amd64 and arm64, publication. Afterwards downloaded: `SHA256SUMS` matches both archives; `gh attestation verify` accepts the build provenance (SLSA v1, workflow `release.yml`, ref `refs/tags/v0.1.0`; one statement lists both archives); `--version` and `check-config` run from each published archive in a bare `debian:trixie-slim` container (arm64 native, amd64 emulated) |
 | Reproducibility of the embedded eBPF object | `make generate` on an arm64 host and under amd64 emulation | the same object byte for byte (`839e331c…`), which is what the CI job checks on amd64 runners |
 
 **Open and not executed**
-- **The release workflow:** `.github/workflows/release.yml` was validated with `actionlint` and its commands were run
-  locally; it runs on GitHub for the first time when the first version tag is pushed. `ci.yml` has run on GitHub
-  (see the runs above).
+- **CI and release for the changes after v0.1.0:** `ci.yml` and `release.yml` have run on GitHub for the code of
+  v0.1.0 (see the runs above). The argument-limit, kill-guard and PHP changes came after that tag and have not been
+  through either workflow; a `-rc` tag rehearses the release workflow without publishing a final release.
 - A kernel without BTF, kernels of other vendors, kernels other than those listed in
   [compatibility.md](compatibility.md) and real amd64 hardware.
 - **systemd:** only version 249 (Ubuntu 22.04) was run. Newer versions handle some sandboxing directives differently;
   `systemd-analyze verify` and a start under the unit are the first things to check there. The unit's
   `SystemCallArchitectures=native` was not exercised (see the warning above).
-- **A published release:** no tag has been pushed, so no release archive has been downloaded from GitHub and run
-  on a machine other than the local containers.
+- **Published archives on real hosts:** the archives of v0.1.0 were downloaded from GitHub, their checksums and
+  build provenance attestation verified, and `--version` and `check-config` run from them in bare Debian containers
+  (arm64 native, amd64 emulated); the agent from a published archive was not started on a bare-metal or virtual
+  machine.

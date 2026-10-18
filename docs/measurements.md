@@ -44,6 +44,14 @@ All numbers come from runs on 2026-10-17. There are no performance promises beyo
   420,729 were still on disk at the end. That is why the test reports the events **written** by the agent (counter
   `details.events` in `agent.stopped`) and not the lines of the file.
 
+**Re-measured after the argument-capture changes** (configurable limits, variable-size exec records; three further runs
+of `make bench-docker` on the same setup, no other test active): 22,850 to 24,670 process starts per second without a
+lost record in any phase; load inside the tree 58.5 to 60.2 % of one core (arguments on: 60.0 to 66.9 %), RSS peak at
+most 64.7 MiB; latency kernel event to processing median 0.028 ms, p95 0.27 to 0.38 ms (arguments on 0.34 to 0.68 ms),
+mean 0.39 to 0.61 ms, p99 12 to 20 ms, maximum 25 to 42 ms. The load generator is not rate limited, so the start rate
+differs from run to run; the agent CPU per process start is the figure to compare: 24.7 to 26.1 µs (arguments on 26.2 to
+28.0 µs) against 27.1 µs (27.3 µs) in the first measurement above.
+
 ## Overload and losses
 
 - **Load limit without loss:** a sustained load of 21,000 starts/s is loss-free (see above). A ring buffer of 1 MiB
@@ -85,6 +93,9 @@ the setup described above (arm64, 6.12.54, native):
 | Signal attempt (`pidfd_send_signal` returned), mean / p50 / p95 / p99 / max | 0.249 / 0.240 / 0.365 / 0.449 / 0.571 ms | 0.274 / 0.248 / 0.468 / 1.089 / 1.398 ms |
 | From outside, creator clock (start returned until wait returned), mean / p95 / max | 0.441 / 0.547 / 0.915 ms | 0.474 / 0.748 / 2.172 ms |
 | From outside, test clock (until the end message was read), mean / p95 / max | 0.501 / 0.633 / 0.965 ms | 0.534 / 0.810 / 2.241 ms |
+
+Three further runs on the tree with the argument-capture changes (same setup): decision mean 0.10 to 0.125 ms, p95 0.17
+to 0.24 ms; signal attempt mean 0.25 to 0.28 ms, p95 0.43 to 0.53 ms, p99 0.52 to 0.89 ms, maximum 0.75 to 1.57 ms.
 
 Further runs by the test authors on the same setup gave a mean of 0.15 to 0.27 ms for the signal attempt; under
 artificially generated CPU load (36 to 48 busy processes) the mean grew to 0.8 to 1.3 ms and p95 to 1.8 to 3 ms.
@@ -128,5 +139,7 @@ Measured by the `TestOut*` tests in `tests/integration`; the limits are those de
   memory use at 65,536 instances.
 - **Networks other than loopback**, DNS names as targets and the upper bound of 60 s for `Retry-After` (it would cost
   60 s of waiting).
-- Whether another process load (for example starts with very long paths or 4 KiB arguments) costs more per start: the
-  "arguments on" phase measures short arguments.
+- Whether another process load (for example starts with very long paths or with arguments of several KiB) costs more
+  per start: the "arguments on" phase measures short arguments. In particular, a burst of execs with arguments near
+  the 16,383 byte limit was not measured: such records are large, so the ring buffer holds far fewer of them than the
+  288 byte lifecycles above, and an overflow is expected to be counted and reported as `agent.gap` like any other loss.
