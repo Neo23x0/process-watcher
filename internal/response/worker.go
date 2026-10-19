@@ -120,7 +120,14 @@ func NewWorker(o Options) *Worker {
 
 var _ Responder = (*Worker)(nil)
 
-// Start launches the single worker goroutine.
+// Start launches the single worker goroutine. Callers must let it return
+// before the first Submit: nothing here synchronizes a Submit that is
+// already racing Start against a Stop that follows right behind it, and with
+// a non-empty queue the new goroutine can win that race and run the action
+// it finds before ever observing the stop. The agent wiring satisfies this by
+// construction (the process model that calls Submit is only built, and only
+// handed this Worker, after Start returns), so the window has no way to open
+// in practice; nothing here defends against a caller reopening it.
 func (w *Worker) Start() { go w.run() }
 
 // Submit implements Responder: it never blocks.
