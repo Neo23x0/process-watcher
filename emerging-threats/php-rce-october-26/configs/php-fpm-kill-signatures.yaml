@@ -46,17 +46,48 @@ kill:
     - '^(nc|nc\.openbsd|nc\.traditional|ncat|socat[0-9]*|telnet|inetutils-telnet)$'
     - '^php[0-9.]*$'
 
-    # --- Your own command-line signatures (field: argv; each checked against one argument) ---
-    # Uncomment and replace with a vetted pattern. One entry per line, grouped by language/shape so an
-    # audit hit (details.rules[].ref in docs/kill-rules.md) says which category fired.
-    # - 'PLACEHOLDER_BASH_REVERSE_SHELL'     # e.g. a /dev/tcp redirection shape
-    # - 'PLACEHOLDER_BASH_BIND_SHELL'
-    # - 'PLACEHOLDER_PYTHON_REVERSE_SHELL'   # e.g. a socket+dup2+subprocess shape
-    # - 'PLACEHOLDER_PYTHON_BIND_SHELL'
-    # - 'PLACEHOLDER_PERL_REVERSE_SHELL'     # e.g. a Socket+open2/exec shape
-    # - 'PLACEHOLDER_PERL_BIND_SHELL'
-    # - 'PLACEHOLDER_OTHER_1'
-    # - 'PLACEHOLDER_OTHER_2'
+    # --- BASH reverse shells (/dev/tcp & /dev/udp fd-redirect shapes) ---
+    - '/dev/(tcp|udp)/[^ /]+/[0-9]{2,5}'                      # bash -i, 196, read-line, 5, udp — all 5 variants
+    - 'exec\s+[0-9]+<>/dev/(tcp|udp)/'                        # exec-fd form: exec 196<>/dev/tcp/…
+    - '>&\s*/dev/udp/'                                        # UDP redirect form
+
+    # --- PYTHON reverse shells (dup2 + pty.spawn one-liners) ---
+    - 'dup2\([a-zA-Z0-9_]+\.fileno\(\),\s*[012]\)'            # os.dup2(s.fileno(),0/1/2) — lowest-FP single marker
+    - 'pty\.spawn\('
+    - 'python[0-9.]*\s+-c\s+[''"]import\s+(socket|os|pty|subprocess)'   # python -c 'import socket…' one-liners
+    - 'os\.getenv\("RHOST"\)'                                 # env-indirection variant
+    - 'def\s+(s2p|p2s)\('                                     # Windows relay-thread variant
+
+    # --- PYTHON bind shells ---
+    - '\.listen\([0-9]+\).{0,120}\.accept\(\)'               # bind+listen then accept (Python3 Bind)
+
+    # --- PERL reverse & bind shells (Socket / IO::Socket families; sockaddr_in covers both directions) ---
+    - 'sockaddr_in\('                                         # connect(S,sockaddr_in( & bind(S,sockaddr_in(
+    - 'open\(STD(IN|OUT|ERR),">&'                             # STDIN/STDOUT/STDERR reopen onto socket
+    - 'IO::Socket::INET'                                      # perl -MIO family
+    - '->fdopen\('                                            # STDIN->fdopen($c,r)
+    - 'inet_aton\('                                           # address resolution one-liners
+
+    # --- PHP reverse shells (fsockopen + fd-3 redirect carousel) ---
+    - 'fsockopen\('                                           # every php -r revshell starts here
+    - '<&3\s+>&3\s+2>&3'                                      # the fixed fd-3 chain — near-zero FP
+    - '\b(shell_exec|passthru|proc_open)\b'                   # exec-function carousel + Ivan Sincek descriptorspec
+    - 'php[0-9.]*\s+-r\s+[''"]\$[a-z]'                        # php -r '$sock=…' one-liner shape
+
+    # --- PHP bind shells ---
+    - 'socket_(bind|listen|accept)\('                         # PHP Bind socket_create family
+
+    # --- PHP webshells (argv-visible superglobal + exec combos) ---
+    - '\$_(GET|POST|REQUEST)\['                               # $_GET[cmd] /`$_GET[0]` — in argv = passed on CLI
+
+    # --- TRANSPORT-layer one-liners (nc/ncat/socat/openssl/mkfifo pipes, single-arg sh -c form) ---
+    - '\b(nc|ncat)(\.exe)?\s[^;|]{0,60}-[ec]\s'               # nc/ncat -e/-c with any flag order
+    - 'busybox\s+nc\s+[^;]*\s-e\s'                            # BusyBox nc -e
+    - 'mkfifo\s+[^ ]+.{0,120}\|[^|]*(sh|bash|nc|ncat|telnet|openssl)'  # mkfifo relay pipes
+    - 'socat\s+TCP(-LISTEN)?:[^ ]+\s+EXEC:'                   # socat TCP*: EXEC: (rev + bind)
+    - 'socat\s+TCP(-LISTEN)?:'                                # broader socat TCP shape
+    - 'openssl\s+s_client\s+-quiet\s+-connect.{0,60}(mkfifo|>|sh\b)'   # openssl stager with shell pipe
+    - 'msfvenom\s+-p\s+'                                      # payload generation on the box
   spare_root_image: true
 
 outputs:
