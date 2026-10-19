@@ -3,6 +3,7 @@ package response
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 	"syscall"
 	"testing"
@@ -493,9 +494,26 @@ func TestDryRunNeverTouchesTheKernel(t *testing.T) {
 
 func TestBoundedQueueAndShutdown(t *testing.T) {
 	r := newRig(t, false, []string{"image"}, nil, []string{`^useradd$`})
-	// The worker is not started: nothing drains the queue.
 	p := r.k.spawn(2900, 1, "/usr/sbin/useradd", "useradd\x00")
 	subj := killrule.Subject{Image: sp("useradd")}
+
+	// Block the worker inside its first (and, in this test, only) real
+	// execution so a backlog can pile up behind it the way a slow decision
+	// would in production, without racing Start against a queue that is
+	// already full. That specific race cannot happen outside this test
+	// either: Submit has no caller until after Start returns (the process
+	// model is wired up afterwards), so the queue is always empty when the
+	// worker goroutine first looks at it.
+	holding := make(chan struct{})
+	release := make(chan struct{})
+	r.k.afterOpen = func() {
+		close(holding)
+		<-release
+	}
+	r.w.Start()
+	r.w.Submit(r.action(p, 1, subj)) // the only action with nothing ahead of it; dequeued at once
+	<-holding                        // now provably stuck past PidfdOpen: nothing else can be dequeued
+
 	for i := 0; i < QueueCap+10; i++ {
 		r.w.Submit(r.action(p, 1, subj))
 	}
@@ -511,20 +529,30 @@ func TestBoundedQueueAndShutdown(t *testing.T) {
 	if c := r.w.Counters(); c.QueueLen != QueueCap || c.Skipped[event.SkipActionQueueFull] != 10 {
 		t.Errorf("%+v", c)
 	}
-	if r.k.opened != 0 {
-		t.Error("nothing may be executed while the queue is not served")
+	if r.k.opened != 1 {
+		t.Error("only the one action already running may open a handle while the rest wait")
 	}
 
-	// Shutdown completes the waiting actions as skipped and starts nothing.
-	r.w.Start()
+	// Ask for shutdown while that action is still blocked, and confirm the
+	// signal is fully in effect (not just sent) before letting it finish, so
+	// nothing is left to the scheduler: every action still in the queue at
+	// that point must come out skipped, not executed.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	r.w.Stop(ctx)
-	if n := len(r.rec.results()); n != 10+QueueCap {
-		t.Fatalf("%d results after shutdown, want %d", n, 10+QueueCap)
+	stopped := make(chan struct{})
+	go func() {
+		r.w.Stop(ctx)
+		close(stopped)
+	}()
+	waitUntilStopping(t, r.w)
+	close(release)
+	<-stopped
+
+	if n := len(r.rec.results()); n != 10+1+QueueCap {
+		t.Fatalf("%d results after shutdown, want %d", n, 10+1+QueueCap)
 	}
-	if r.k.opened != 0 || len(p.signaled) != 0 {
-		t.Errorf("shutdown must not execute waiting actions (opened %d)", r.k.opened)
+	if r.k.opened != 1 || len(p.signaled) != 1 {
+		t.Errorf("shutdown must not execute waiting actions (opened %d, signaled %d)", r.k.opened, len(p.signaled))
 	}
 	if c := r.w.Counters(); c.Skipped[event.SkipShutdown] != QueueCap {
 		t.Errorf("%+v", c.Skipped)
@@ -534,6 +562,20 @@ func TestBoundedQueueAndShutdown(t *testing.T) {
 	last := r.rec.results()[len(r.rec.results())-1]
 	if *last.Reason != event.SkipShutdown {
 		t.Errorf("%+v", last)
+	}
+}
+
+// waitUntilStopping blocks until w has observed a Stop call. Used instead of
+// a sleep to turn a "Stop was called a moment ago" assumption into a fact the
+// test actually waits for.
+func waitUntilStopping(t *testing.T, w *Worker) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !w.stopping.Load() {
+		if time.Now().After(deadline) {
+			t.Fatal("Stop did not signal shutdown in time")
+		}
+		runtime.Gosched()
 	}
 }
 
