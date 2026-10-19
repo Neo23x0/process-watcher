@@ -6,7 +6,8 @@ blocks a specific one. process-watcher is an **additional detection and response
 PHP process starts, with their command lines, and can optionally send `SIGKILL` to such programs after the fact. It
 does not prevent the exploitation of an unknown vulnerability.
 
-Everything below was checked on real processes. Section 9 says exactly where and what was not.
+Everything below was checked on real processes. Section 9 says exactly where and what was not. In a hurry? The
+condensed [quick start](php-quickstart.md) takes you from download to a log of what PHP starts.
 
 ## 1. What to deploy first
 
