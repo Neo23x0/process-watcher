@@ -1,6 +1,6 @@
 # Emerging threats
 
-Response kits for fresh threats: what process-watcher can show about one, with tuned
+Response kits for fresh threats: what process-watcher can show about one, with a one-line installer, tuned
 configurations and a short guide. Each kit has its own folder, says what it covers and what it cannot do, and works
 without changing anything else on the host.
 

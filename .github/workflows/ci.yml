@@ -114,3 +114,8 @@ jobs:
 
       - name: actionlint
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
+
+      # The installer of the emerging-threats kit runs as root on other people's hosts, under dash, busybox
+      # and bash: lint it as POSIX sh.
+      - name: shellcheck of the installer
+        run: docker run --rm -v "$PWD:/repo" -w /repo koalaman/shellcheck:v0.10.0 -s sh emerging-threats/php-rce-october-26/install.sh

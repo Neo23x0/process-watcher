@@ -7,7 +7,8 @@ PHP process starts, with their command lines, and can optionally send `SIGKILL` 
 does not prevent the exploitation of an unknown vulnerability.
 
 Everything below was checked on real processes. Section 9 says exactly where and what was not. In a hurry? The
-condensed [quick start](README.md) takes you from download to a log of what PHP starts.
+[quick start](README.md) of this folder has a one-line installer that finds the PHP on a host and starts watching it;
+this guide is the reference behind it.
 
 ## 1. What to deploy first
 
@@ -22,7 +23,7 @@ condensed [quick start](README.md) takes you from download to a log of what PHP 
 
 Ready-made configurations are in [configs/](configs/); `process-watcher check-config --config <file>`
 validates one. They also ship inside every release archive under `php/`, so they are usable right after unpacking,
-without cloning the repository (see the README's install steps).
+without cloning the repository. [install.sh](install.sh) picks the one that fits the PHP it finds on a host.
 
 ## 2. Which executable to watch
 
