@@ -445,8 +445,8 @@ Everything beyond this page is in [docs/](docs/): the full event format ([events
 kill-rule reference ([kill-rules.md](docs/kill-rules.md)), [outputs.md](docs/outputs.md),
 [operation.md](docs/operation.md), the tested kernels ([compatibility.md](docs/compatibility.md)), measurements
 ([measurements.md](docs/measurements.md)) and the runs that took place ([acceptance.md](docs/acceptance.md)). For PHP
-(PHP-FPM, Apache with mod_php, CGI, CLI) there is a ready-to-run kit in [emerging-threats/](emerging-threats/): a
-one-line installer, the configurations and the full guide.
+(PHP-FPM, Apache with mod_php, CGI, CLI) there is a kit in [emerging-threats/](emerging-threats/): ready-made
+configurations and the full guide.
 
 License: GPL-3.0, see [LICENSE](LICENSE). The sources of the eBPF programs carry `GPL-2.0-or-later` (compatible with
 GPL-3.0); the object carries the license `GPL`, which the kernel requires for GPL-only helpers.

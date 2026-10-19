@@ -13,20 +13,12 @@ IMAGE=${PW_PHP_IMAGE:-pw-php-lab:trixie-2}
 CONTAINER=pw-php-lab-run
 ARCH=$(docker info --format '{{.Architecture}}' | sed 's/aarch64/arm64/;s/x86_64/amd64/')
 
-ALL="deployments:nginx-fpm deployments:apache-fpm deployments:apache-modphp deployments:nginx-phpcgi deployments:apache-fcgid deployments:cli argv fpm-lifecycle killrules:narrow killrules:guard killrules:broad killrules:dry killrules:root blindspot latency installer:fpm installer:modphp installer:cgi installer:negative"
+ALL="deployments:nginx-fpm deployments:apache-fpm deployments:apache-modphp deployments:nginx-phpcgi deployments:apache-fcgid deployments:cli argv fpm-lifecycle killrules:narrow killrules:guard killrules:broad killrules:dry killrules:root blindspot latency"
 SELECT=${*:-$ALL}
 
 mkdir -p dist/php/out
 echo "building the agent for linux/$ARCH"
 GOOS=linux GOARCH="$ARCH" CGO_ENABLED=0 go build -trimpath -buildvcs=false -o dist/php/process-watcher ./cmd/process-watcher || exit 1
-case " $SELECT " in
-*" installer"*)
-	# the installer scenarios download a release from a local mirror: build one (v9.9.9) from this tree
-	echo "building the release archive for linux/$ARCH (the mirror of the installer scenarios)"
-	rm -rf dist/php/release
-	go run ./tools/release -version v9.9.9 -out dist/php/release/v9.9.9 -arch "$ARCH" > /dev/null || exit 1
-	;;
-esac
 if ! docker image inspect "$IMAGE" > /dev/null 2>&1; then
 	echo "building the lab image $IMAGE"
 	docker build -q -t "$IMAGE" -f tests/php/Dockerfile.debian tests/php || exit 1
@@ -41,7 +33,7 @@ for sel in $SELECT; do
 	echo "=== $sel"
 	log=dist/php/out/$name${arg:+-$arg}.log
 	docker run --rm --name "$CONTAINER" --privileged --pid=host \
-		-v "$PWD/tests/php/lab":/lab:ro -v "$PWD/dist/php":/dist:ro -v "$PWD/dist/php/out":/out -v "$PWD/emerging-threats":/emerging-threats:ro \
+		-v "$PWD/tests/php/lab":/lab:ro -v "$PWD/dist/php":/dist:ro -v "$PWD/dist/php/out":/out \
 		"$IMAGE" /lab/scenarios/"$name".sh ${arg:+"$arg"} 2>&1 | tee "$log" | grep -E '^PW-PHP: (PASS|FAIL|INFO|TOTAL)' | sed 's/^PW-PHP: //' | cut -c1-240
 	n=$(grep -c '^PW-PHP: FAIL' "$log")
 	failed=$((failed + n))

@@ -24,7 +24,6 @@ prints `PW-PHP: PASS|FAIL|INFO ...` lines and exits with the number of failed ch
 | `killrules:<mode>` | `narrow`, `guard`, `broad`, `dry`, `root`: response rules against a real FPM service, including the failure of a broad rule |
 | `blindspot` | a worker that opens a network connection itself: visible to `ss`, invisible to the agent |
 | `latency` | decision and signal latency against 200 helpers, and the outcome against 200 short-lived shells |
-| `installer:<mode>` | `fpm`, `modphp`, `cgi`, `negative`: the one-line installer of the PHP kit ([install.sh](../../emerging-threats/php-rce-october-26/install.sh)), piped into `sh` as the documented command does, against real PHP and a release (v9.9.9) that `run.sh` builds from this tree and serves from a local mirror: detection, checksum, install, observe, stop, the refusal of a really killing configuration, and the refusals (no PHP, not root, damaged archive, missing checksum entry, unknown release, a release without `php/`) |
 
 `probe.php` ([lab/fixture/](lab/fixture/)) is a test fixture, **not a web shell**: it runs fixed, harmless programs
 selected by a mode name (`id`, `uname`, `echo`, a copy of `sleep`, a loopback connection). Sizes and counts come from
@@ -32,8 +31,6 @@ the request, never a command.
 
 ## Things to know
 
-- The `installer` scenarios need Go on the host: `run.sh` builds the release archive with `go run ./tools/release`
-  (into `dist/php/release/`). Nothing is downloaded from the internet in them; the installer fetches from the local mirror.
 - The containers share the PID namespace of the Docker VM. Run one lab at a time, make sure no other container with PHP
   or web server processes runs there (`docker ps`), and do not run the Go integration tests at the same time: a watch
   on `php-fpm` also selects their helper processes. A scenario that hangs leaves its container running:
