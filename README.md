@@ -16,11 +16,12 @@ processes with a targeted `SIGKILL` ([Kill rules](#kill-rules)).
 
 ## Quick start
 
-**1. Download and unpack** (use `arm64` instead of `amd64` on ARM machines; the current version is on the
-[releases page](https://github.com/Neo23x0/process-watcher/releases)):
+**1. Download and unpack** the latest [release](https://github.com/Neo23x0/process-watcher/releases) (`amd64` or
+`arm64`, detected from your machine; the archive names contain the version, so the second line looks up the latest tag):
 
 ```bash
-VERSION=v0.1.0; ARCH=amd64
+ARCH=$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')
+VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/Neo23x0/process-watcher/releases/latest | sed 's#.*/##')
 curl -fsSLO https://github.com/Neo23x0/process-watcher/releases/download/$VERSION/process-watcher_${VERSION}_linux_${ARCH}.tar.gz
 tar xzf process-watcher_${VERSION}_linux_${ARCH}.tar.gz && cd process-watcher_${VERSION}_linux_${ARCH}
 ```
@@ -82,6 +83,7 @@ programs and runs a probe process of its own. Tested kernels: [docs/compatibilit
 ### Verify the download
 
 ```bash
+# in the directory the archive was downloaded to, with $VERSION and $ARCH from step 1
 curl -fsSLO https://github.com/Neo23x0/process-watcher/releases/download/$VERSION/SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
 gh attestation verify process-watcher_${VERSION}_linux_${ARCH}.tar.gz --repo Neo23x0/process-watcher   # build provenance
