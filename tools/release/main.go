@@ -1,22 +1,33 @@
 // Command release builds the release archives of process-watcher.
 //
-//	go run ./tools/release -version v0.1.0 [-out dist/release] [-arch amd64,arm64]
+//	go run ./tools/release -version v0.1.1 [-out dist/release] [-arch amd64,arm64]
 //
 // For every architecture it cross-compiles the agent as a static Linux binary,
 // checks that the result really is a single self-contained executable (no
-// dynamic loader, no shared libraries) and writes
+// dynamic loader, no shared libraries) and writes two archives with the same
+// contents:
 //
-//	<out>/process-watcher_<version>_linux_<arch>.tar.gz
+//	<out>/process-watcher_<version>_linux_<arch>.tar.gz   this version, for pinning
+//	<out>/process-watcher_linux_<arch>.tar.gz             the same name in every release
 //
-// with one directory of the same name holding: the binary process-watcher,
-// the example configuration process-watcher.yaml (the agent finds a
-// configuration next to its binary by itself), the LICENSE, and below php/
-// every file of examples/php/ (the PHP deployment configurations of
-// docs/php.md) so they are usable right after unpacking, without cloning the
-// repository. A file <out>/SHA256SUMS lists the archives.
+// The second name makes https://github.com/<owner>/<repo>/releases/latest/download/process-watcher_linux_<arch>.tar.gz
+// work without knowing the version. Each archive has one directory of the same
+// name as the archive (so unpacking one never overwrites an unpacked other
+// version) with
+//
+//	process-watcher                              the binary
+//	process-watcher.yaml                         the example configuration (the agent finds it next to its binary)
+//	LICENSE
+//	packaging/install.sh                         installs the binary and the unit; the repository's packaging/ layout
+//	packaging/systemd/process-watcher.service    the systemd unit
+//	packaging/config/process-watcher.yaml        what install.sh installs as /etc/process-watcher/config.yaml
+//	php/*.yaml                                   every file of examples/php/ (the PHP deployment configurations of
+//	                                             docs/php.md), usable right after unpacking, without cloning the repository
+//
+// A file <out>/SHA256SUMS lists every archive.
 //
 // Archive metadata is fixed (owner root, modification time from
-// SOURCE_DATE_EPOCH or the time of the last commit, sorted entries, no gzip
+// SOURCE_DATE_EPOCH or the time of the last commit, fixed entry order, no gzip
 // timestamp) and the build uses -trimpath without VCS stamping, so the same
 // source and Go toolchain give byte-identical archives on every machine: a
 // maintainer can rebuild a release locally and compare the checksums.
@@ -73,11 +84,107 @@ type entry struct {
 	data []byte
 }
 
+// payload is everything an archive holds besides the binary.
+type payload struct {
+	config        []byte  // process-watcher.yaml: the documented example configuration
+	license       []byte  // LICENSE
+	installer     []byte  // packaging/install.sh
+	unit          []byte  // packaging/systemd/process-watcher.service
+	serviceConfig []byte  // packaging/config/process-watcher.yaml
+	php           []entry // php/*.yaml: the PHP deployment configurations, sorted by name
+}
+
+// entries lists the files of an archive in their fixed order: the files at the
+// top, then the subdirectories in name order (packaging/, php/).
+func (p payload) entries(bin []byte) []entry {
+	return append([]entry{
+		{"process-watcher", 0o755, bin},
+		{"process-watcher.yaml", 0o644, p.config},
+		{"LICENSE", 0o644, p.license},
+		{"packaging/install.sh", 0o755, p.installer},
+		{"packaging/systemd/process-watcher.service", 0o644, p.unit},
+		{"packaging/config/process-watcher.yaml", 0o644, p.serviceConfig},
+	}, p.php...)
+}
+
+// loadPayload reads the files below root. packaging is the directory with the
+// install script, the unit and the service configuration (the layout of the
+// repository's packaging/ directory, which install.sh expects next to itself);
+// phpExamples is the directory whose *.yaml files are shipped below php/.
+func loadPayload(root, config, license, packaging, phpExamples string) (payload, error) {
+	read := func(rel string) ([]byte, error) {
+		data, err := os.ReadFile(filepath.Join(root, rel))
+		if err != nil {
+			return nil, err
+		}
+		if len(data) == 0 {
+			return nil, fmt.Errorf("%s is empty", filepath.Join(root, rel))
+		}
+		return data, nil
+	}
+	var p payload
+	var err error
+	for _, f := range []struct {
+		dst *[]byte
+		rel string
+	}{
+		{&p.config, config},
+		{&p.license, license},
+		{&p.installer, filepath.Join(packaging, "install.sh")},
+		{&p.unit, filepath.Join(packaging, "systemd", "process-watcher.service")},
+		{&p.serviceConfig, filepath.Join(packaging, "config", "process-watcher.yaml")},
+	} {
+		if *f.dst, err = read(f.rel); err != nil {
+			return payload{}, err
+		}
+	}
+	if !bytes.HasPrefix(p.installer, []byte("#!")) {
+		return payload{}, fmt.Errorf("%s does not start with a #! line", filepath.Join(root, packaging, "install.sh"))
+	}
+	if p.php, err = loadPHPExamples(filepath.Join(root, phpExamples)); err != nil {
+		return payload{}, err
+	}
+	return p, nil
+}
+
+// loadPHPExamples reads every *.yaml file directly below dir (not recursive),
+// sorted by name, as archive entries below "php/". It requires at least one
+// file, so an emptied or misspelled directory is a build error, not a
+// silently thinner archive.
+func loadPHPExamples(dir string) ([]entry, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("no *.yaml files in %s", dir)
+	}
+	sort.Strings(matches)
+	entries := make([]entry, 0, len(matches))
+	for _, m := range matches {
+		data, err := os.ReadFile(m)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry{"php/" + filepath.Base(m), 0o644, data})
+	}
+	return entries, nil
+}
+
+// archiveNames returns the names (without .tar.gz) of the two archives of one
+// architecture: with the version in the name, and without it.
+func archiveNames(version, goarch string) []string {
+	return []string{
+		fmt.Sprintf("process-watcher_%s_linux_%s", version, goarch),
+		fmt.Sprintf("process-watcher_linux_%s", goarch),
+	}
+}
+
 // writeArchive writes a deterministic .tar.gz: one top-level directory, a
 // directory header right before the first entry of each subdirectory, the
 // entries in the given order, owner root, the same modification time
 // everywhere.
-func writeArchive(path, dir string, entries []entry, mtime time.Time) error {
+func writeArchive(file, dir string, entries []entry, mtime time.Time) error {
 	var buf bytes.Buffer
 	zw, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
 	if err != nil {
@@ -119,37 +226,47 @@ func writeArchive(path, dir string, entries []entry, mtime time.Time) error {
 	if err := zw.Close(); err != nil {
 		return err
 	}
-	return os.WriteFile(path, buf.Bytes(), 0o644)
+	return os.WriteFile(file, buf.Bytes(), 0o644)
 }
 
-// loadPHPExamples reads every *.yaml file directly below dir (not recursive),
-// sorted by name, as archive entries below "php/". It requires at least one
-// file, so an emptied or misspelled directory is a build error, not a
-// silently thinner archive.
-func loadPHPExamples(dir string) ([]entry, error) {
-	matches, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
-	if err != nil {
-		return nil, err
-	}
-	if len(matches) == 0 {
-		return nil, fmt.Errorf("no *.yaml files in %s", dir)
-	}
-	sort.Strings(matches)
-	entries := make([]entry, 0, len(matches))
-	for _, m := range matches {
-		data, err := os.ReadFile(m)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, entry{"php/" + filepath.Base(m), 0o644, data})
-	}
-	return entries, nil
+// sum is one line of SHA256SUMS.
+type sum struct {
+	name string // file name
+	line string // "<hash>  <name>\n"
 }
 
 // sumsLine formats one line of SHA256SUMS ("<hash>  <name>", as sha256sum -c reads it).
 func sumsLine(name string, data []byte) string {
 	h := sha256.Sum256(data)
 	return hex.EncodeToString(h[:]) + "  " + name + "\n"
+}
+
+// writeSums writes SHA256SUMS, sorted by file name, and returns its content.
+func writeSums(out string, sums []sum) (string, error) {
+	sort.Slice(sums, func(i, j int) bool { return sums[i].name < sums[j].name })
+	var b strings.Builder
+	for _, s := range sums {
+		b.WriteString(s.line)
+	}
+	return b.String(), os.WriteFile(filepath.Join(out, "SHA256SUMS"), []byte(b.String()), 0o644)
+}
+
+// writeArchives writes both archives of one architecture below out and returns
+// their SHA256SUMS lines.
+func writeArchives(out, version, goarch string, entries []entry, mtime time.Time) ([]sum, error) {
+	var sums []sum
+	for _, dir := range archiveNames(version, goarch) {
+		name := dir + ".tar.gz"
+		if err := writeArchive(filepath.Join(out, name), dir, entries, mtime); err != nil {
+			return nil, err
+		}
+		arc, err := os.ReadFile(filepath.Join(out, name))
+		if err != nil {
+			return nil, err
+		}
+		sums = append(sums, sum{name, sumsLine(name, arc)})
+	}
+	return sums, nil
 }
 
 // checkStatic verifies that the file is a single static executable for the
@@ -224,6 +341,7 @@ func run() error {
 	root := flag.String("root", ".", "repository root")
 	config := flag.String("config", filepath.Join("examples", "process-watcher.full.yaml"), "configuration file shipped as process-watcher.yaml, relative to -root")
 	license := flag.String("license", "LICENSE", "license file, relative to -root")
+	packaging := flag.String("packaging", "packaging", "directory with install.sh, systemd/process-watcher.service and config/process-watcher.yaml, relative to -root")
 	phpExamples := flag.String("php-examples", filepath.Join("examples", "php"), "directory of PHP example configurations shipped below php/, relative to -root")
 	epoch := flag.Int64("source-date-epoch", 0, "modification time of the archive entries in seconds (default: SOURCE_DATE_EPOCH or the last commit)")
 	flag.Parse()
@@ -251,15 +369,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	cfg, err := os.ReadFile(filepath.Join(*root, *config))
-	if err != nil {
-		return err
-	}
-	lic, err := os.ReadFile(filepath.Join(*root, *license))
-	if err != nil {
-		return err
-	}
-	phpEntries, err := loadPHPExamples(filepath.Join(*root, *phpExamples))
+	files, err := loadPayload(*root, *config, *license, *packaging, *phpExamples)
 	if err != nil {
 		return err
 	}
@@ -272,7 +382,7 @@ func run() error {
 	}
 	defer os.RemoveAll(tmp)
 
-	var sums []string
+	var sums []sum
 	for _, t := range selected {
 		bin := filepath.Join(tmp, "process-watcher-"+t.goarch)
 		if err := build(*root, t.goarch, *version, bin); err != nil {
@@ -285,29 +395,20 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		dir := fmt.Sprintf("process-watcher_%s_linux_%s", *version, t.goarch)
-		name := dir + ".tar.gz"
-		archiveEntries := append([]entry{
-			{"process-watcher", 0o755, data},
-			{"process-watcher.yaml", 0o644, cfg},
-			{"LICENSE", 0o644, lic},
-		}, phpEntries...)
-		err = writeArchive(filepath.Join(*out, name), dir, archiveEntries, mtime)
+		written, err := writeArchives(*out, *version, t.goarch, files.entries(data), mtime)
 		if err != nil {
 			return err
 		}
-		arc, err := os.ReadFile(filepath.Join(*out, name))
-		if err != nil {
-			return err
+		for _, s := range written {
+			fmt.Printf("%s  binary %d bytes (static, linux/%s)\n", s.name, len(data), t.goarch)
 		}
-		sums = append(sums, sumsLine(name, arc))
-		fmt.Printf("%s  binary %d bytes (static, linux/%s), archive %d bytes\n", name, len(data), t.goarch, len(arc))
+		sums = append(sums, written...)
 	}
-	sort.Strings(sums)
-	if err := os.WriteFile(filepath.Join(*out, "SHA256SUMS"), []byte(strings.Join(sums, "")), 0o644); err != nil {
+	content, err := writeSums(*out, sums)
+	if err != nil {
 		return err
 	}
-	fmt.Print(strings.Join(sums, ""))
+	fmt.Print(content)
 	return nil
 }
 

@@ -90,23 +90,24 @@ gh attestation verify process-watcher_${VERSION}_linux_${ARCH}.tar.gz --repo Neo
 ```
 
 Every archive holds the **single static binary** (eBPF programs embedded; nothing else is needed at run time), the
-commented example configuration `process-watcher.yaml`, the `LICENSE`, and below `php/` the PHP deployment
-configurations of [docs/php.md](docs/php.md), usable right away (`process-watcher --config php/php-fpm-dry-run.yaml`).
-Only `amd64` and `arm64` are provided: the eBPF collector assumes 64-bit kernel pointers, so 32-bit kernels (x86, ARM)
-are not supported.
+commented example configuration `process-watcher.yaml`, the `LICENSE`, below `php/` the PHP deployment configurations
+of [docs/php.md](docs/php.md), usable right away (`process-watcher --config php/php-fpm-dry-run.yaml`), and in
+`packaging/` the systemd unit with the script that installs it. Only `amd64` and `arm64` are provided: the eBPF
+collector assumes 64-bit kernel pointers, so 32-bit kernels (x86, ARM) are not supported.
 
 ### As a systemd service
 
+From the unpacked archive:
+
 ```bash
-sudo ./packaging/install.sh ./process-watcher    # the binary from the archive, or ./dist/process-watcher-linux-<arch>
+sudo ./packaging/install.sh ./process-watcher    # binary, configuration and unit; starts nothing
 sudoedit /etc/process-watcher/config.yaml        # adjust the watch list
 sudo process-watcher doctor
 sudo systemctl enable --now process-watcher
 ```
 
-`install.sh` and the unit are in `packaging/` of this repository (not in the release archive: clone the repository or
-copy that directory); details and the reasons for the unit's settings: [packaging/INSTALL.md](packaging/INSTALL.md).
-Without systemd, copy the binary and start it with root privileges.
+Details, installing from a clone of the repository and the reasons for the unit's settings:
+[packaging/INSTALL.md](packaging/INSTALL.md). Without systemd, copy the binary and start it with root privileges.
 
 ## Usage examples
 

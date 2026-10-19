@@ -10,9 +10,15 @@ name: Release
 #
 # The release contains one archive per architecture (linux/amd64, linux/arm64)
 # with the single static binary, the example configuration process-watcher.yaml,
-# the LICENSE, and below php/ the PHP deployment configurations of docs/php.md,
-# plus SHA256SUMS. The archives are built by tools/release; `make
-# release-archives VERSION=v0.1.0` produces the same bytes locally.
+# the LICENSE, below php/ the PHP deployment configurations of docs/php.md and,
+# in packaging/, the systemd unit with its install script. Every archive is
+# published under two names with the same files:
+# process-watcher_<tag>_linux_<arch>.tar.gz (this version) and
+# process-watcher_linux_<arch>.tar.gz (the same name in every release, which is
+# what makes releases/latest/download/<name> work). SHA256SUMS lists all of them
+# and the build provenance attestation covers all of them. The archives are
+# built by tools/release; `make release-archives VERSION=v0.1.1` produces the
+# same bytes locally.
 #
 # Every action is pinned to a commit (the comment names the version);
 # Dependabot proposes updates.
@@ -112,18 +118,42 @@ jobs:
           name: release-archives
           path: dist
 
-      - name: Unpack and run the shipped binary with the shipped configuration
+      - name: Unpack the archives and run the shipped binary with the shipped configuration
         env:
           TAG: ${{ github.ref_name }}
           ARCH: amd64
         run: |
           set -euo pipefail
           cd dist
-          sha256sum --check --ignore-missing SHA256SUMS
+          # Every archive is listed in SHA256SUMS, and every listed file matches.
+          diff <(find . -maxdepth 1 -name '*.tar.gz' -printf '%f\n' | LC_ALL=C sort) <(awk '{print $2}' SHA256SUMS | LC_ALL=C sort)
+          sha256sum --check SHA256SUMS
           tar xzf "process-watcher_${TAG}_linux_${ARCH}.tar.gz"
+          tar xzf "process-watcher_linux_${ARCH}.tar.gz"
           dir="$PWD/process-watcher_${TAG}_linux_${ARCH}"
-          test "$(find "$dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = "LICENSE php process-watcher process-watcher.yaml "
-          test "$(find "$dir/php" -mindepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = "apache-mod-php.yaml php-cgi.yaml php-cli-workers.yaml php-fpm-dry-run.yaml php-fpm-kill-signatures.yaml php-fpm-kill.yaml php-fpm-observe.yaml "
+          stable="$PWD/process-watcher_linux_${ARCH}"
+          # The archive holds exactly these files, and the unversioned archive the same ones.
+          listing() { (cd "$1" && find . -mindepth 1 -printf '%P %m\n' | LC_ALL=C sort); }
+          expected="LICENSE 644
+          packaging 755
+          packaging/config 755
+          packaging/config/process-watcher.yaml 644
+          packaging/install.sh 755
+          packaging/systemd 755
+          packaging/systemd/process-watcher.service 644
+          php 755
+          php/apache-mod-php.yaml 644
+          php/php-cgi.yaml 644
+          php/php-cli-workers.yaml 644
+          php/php-fpm-dry-run.yaml 644
+          php/php-fpm-kill-signatures.yaml 644
+          php/php-fpm-kill.yaml 644
+          php/php-fpm-observe.yaml 644
+          process-watcher 755
+          process-watcher.yaml 644"
+          diff <(listing "$dir") <(echo "$expected")
+          diff <(listing "$stable") <(echo "$expected")
+          diff -r "$dir" "$stable"
           file "$dir/process-watcher"
           file "$dir/process-watcher" | grep -q 'statically linked'
           test "$("$dir/process-watcher" --version | cut -d' ' -f2)" = "$TAG"
@@ -135,6 +165,26 @@ jobs:
           "$dir/process-watcher" check-config --config "$dir/php/php-fpm-dry-run.yaml"
           # Informational: can this binary load its eBPF programs on the kernel of this runner?
           sudo "$dir/process-watcher" doctor || echo "::warning::doctor reported problems on this runner kernel (see the log)"
+
+      - name: Install the shipped unit with the shipped script
+        env:
+          TAG: ${{ github.ref_name }}
+          ARCH: amd64
+        run: |
+          set -euo pipefail
+          dir="$PWD/dist/process-watcher_${TAG}_linux_${ARCH}"
+          # The script of the archive, run on this systemd host: files and modes, nothing started.
+          sudo "$dir/packaging/install.sh" "$dir/process-watcher"
+          test "$(stat -c '%a %U:%G' /usr/local/bin/process-watcher)" = "755 root:root"
+          test "$(stat -c '%a %U:%G' /etc/process-watcher/config.yaml)" = "600 root:root"
+          test "$(stat -c '%a %U:%G' /etc/systemd/system/process-watcher.service)" = "644 root:root"
+          cmp "$dir/process-watcher" /usr/local/bin/process-watcher
+          sudo cmp "$dir/packaging/config/process-watcher.yaml" /etc/process-watcher/config.yaml
+          cmp "$dir/packaging/systemd/process-watcher.service" /etc/systemd/system/process-watcher.service
+          sudo /usr/local/bin/process-watcher check-config --config /etc/process-watcher/config.yaml
+          test "$(systemctl show -p ActiveState --value process-watcher)" = inactive
+          test "$(systemctl show -p UnitFileState --value process-watcher)" = disabled
+          systemd-analyze verify /etc/systemd/system/process-watcher.service || echo "::warning::systemd-analyze verify reported problems for the unit (see the log)"
 
   smoke-arm64:
     name: Smoke test linux/arm64
@@ -150,26 +200,73 @@ jobs:
           name: release-archives
           path: dist
 
-      - name: Unpack and run the shipped binary with the shipped configuration
+      - name: Unpack the archives and run the shipped binary with the shipped configuration
         env:
           TAG: ${{ github.ref_name }}
           ARCH: arm64
         run: |
           set -euo pipefail
           cd dist
-          sha256sum --check --ignore-missing SHA256SUMS
+          # Every archive is listed in SHA256SUMS, and every listed file matches.
+          diff <(find . -maxdepth 1 -name '*.tar.gz' -printf '%f\n' | LC_ALL=C sort) <(awk '{print $2}' SHA256SUMS | LC_ALL=C sort)
+          sha256sum --check SHA256SUMS
           tar xzf "process-watcher_${TAG}_linux_${ARCH}.tar.gz"
+          tar xzf "process-watcher_linux_${ARCH}.tar.gz"
           dir="$PWD/process-watcher_${TAG}_linux_${ARCH}"
-          test "$(find "$dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = "LICENSE php process-watcher process-watcher.yaml "
-          test "$(find "$dir/php" -mindepth 1 -printf '%f\n' | sort | tr '\n' ' ')" = "apache-mod-php.yaml php-cgi.yaml php-cli-workers.yaml php-fpm-dry-run.yaml php-fpm-kill-signatures.yaml php-fpm-kill.yaml php-fpm-observe.yaml "
+          stable="$PWD/process-watcher_linux_${ARCH}"
+          # The archive holds exactly these files, and the unversioned archive the same ones.
+          listing() { (cd "$1" && find . -mindepth 1 -printf '%P %m\n' | LC_ALL=C sort); }
+          expected="LICENSE 644
+          packaging 755
+          packaging/config 755
+          packaging/config/process-watcher.yaml 644
+          packaging/install.sh 755
+          packaging/systemd 755
+          packaging/systemd/process-watcher.service 644
+          php 755
+          php/apache-mod-php.yaml 644
+          php/php-cgi.yaml 644
+          php/php-cli-workers.yaml 644
+          php/php-fpm-dry-run.yaml 644
+          php/php-fpm-kill-signatures.yaml 644
+          php/php-fpm-kill.yaml 644
+          php/php-fpm-observe.yaml 644
+          process-watcher 755
+          process-watcher.yaml 644"
+          diff <(listing "$dir") <(echo "$expected")
+          diff <(listing "$stable") <(echo "$expected")
+          diff -r "$dir" "$stable"
           file "$dir/process-watcher"
           file "$dir/process-watcher" | grep -q 'statically linked'
           test "$("$dir/process-watcher" --version | cut -d' ' -f2)" = "$TAG"
+          # The configuration next to the binary is found from any directory.
           cd /tmp
           "$dir/process-watcher" check-config | tee check.out
           grep -q "$dir/process-watcher.yaml" check.out
+          # The PHP configurations shipped below php/ are usable right away, without cloning the repository.
           "$dir/process-watcher" check-config --config "$dir/php/php-fpm-dry-run.yaml"
+          # Informational: can this binary load its eBPF programs on the kernel of this runner?
           sudo "$dir/process-watcher" doctor || echo "::warning::doctor reported problems on this runner kernel (see the log)"
+
+      - name: Install the shipped unit with the shipped script
+        env:
+          TAG: ${{ github.ref_name }}
+          ARCH: arm64
+        run: |
+          set -euo pipefail
+          dir="$PWD/dist/process-watcher_${TAG}_linux_${ARCH}"
+          # The script of the archive, run on this systemd host: files and modes, nothing started.
+          sudo "$dir/packaging/install.sh" "$dir/process-watcher"
+          test "$(stat -c '%a %U:%G' /usr/local/bin/process-watcher)" = "755 root:root"
+          test "$(stat -c '%a %U:%G' /etc/process-watcher/config.yaml)" = "600 root:root"
+          test "$(stat -c '%a %U:%G' /etc/systemd/system/process-watcher.service)" = "644 root:root"
+          cmp "$dir/process-watcher" /usr/local/bin/process-watcher
+          sudo cmp "$dir/packaging/config/process-watcher.yaml" /etc/process-watcher/config.yaml
+          cmp "$dir/packaging/systemd/process-watcher.service" /etc/systemd/system/process-watcher.service
+          sudo /usr/local/bin/process-watcher check-config --config /etc/process-watcher/config.yaml
+          test "$(systemctl show -p ActiveState --value process-watcher)" = inactive
+          test "$(systemctl show -p UnitFileState --value process-watcher)" = disabled
+          systemd-analyze verify /etc/systemd/system/process-watcher.service || echo "::warning::systemd-analyze verify reported problems for the unit (see the log)"
 
   release:
     name: Publish the release
