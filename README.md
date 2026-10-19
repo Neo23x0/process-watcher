@@ -91,7 +91,7 @@ gh attestation verify process-watcher_${VERSION}_linux_${ARCH}.tar.gz --repo Neo
 
 Every archive holds the **single static binary** (eBPF programs embedded; nothing else is needed at run time), the
 commented example configuration `process-watcher.yaml`, the `LICENSE`, and below `php/` the PHP deployment
-configurations of [docs/php.md](docs/php.md), usable right away (`process-watcher --config php/php-fpm-dry-run.yaml`).
+configurations of [emerging-threats/](emerging-threats/), usable right away (`process-watcher --config php/php-fpm-dry-run.yaml`).
 Only `amd64` and `arm64` are provided: the eBPF collector assumes 64-bit kernel pointers, so 32-bit kernels (x86, ARM)
 are not supported.
 
@@ -288,7 +288,7 @@ kernel**, not later from `/proc`: at most `capture.argv_max_args` arguments (def
 omitted from `argv`, not shortened**: a long `sh -c` command then disappears and only the shell and `-c` remain. The
 event says so: `process.argv_complete` is `false` and `process.argv_capture` gives the argument count, the total size,
 the limits and the cut argument's first bytes (`partial`), which is evidence only and never matched by an exclusion or
-a kill rule. Raise the limits (memory and log size grow with them, see [docs/php.md](docs/php.md)) where long inline
+a kill rule. Raise the limits (memory and log size grow with them, see the [PHP guide](emerging-threats/php-rce-october-26/guide.md)) where long inline
 commands matter. Forks carry the creator's arguments (`argv_state: inherited`); processes that were
 already running at start get theirs from `/proc/<pid>/cmdline` (`snapshot`), verified against the kernel start time of
 the instance so that a reused PID is never mixed up (if that fails, `argv` is `null` with a reason). Environment
@@ -445,9 +445,8 @@ Everything beyond this page is in [docs/](docs/): the full event format ([events
 kill-rule reference ([kill-rules.md](docs/kill-rules.md)), [outputs.md](docs/outputs.md),
 [operation.md](docs/operation.md), the tested kernels ([compatibility.md](docs/compatibility.md)), measurements
 ([measurements.md](docs/measurements.md)) and the runs that took place ([acceptance.md](docs/acceptance.md)). For PHP
-(PHP-FPM, Apache with mod_php, CGI, CLI): a condensed [quick start](docs/php-quickstart.md), and the full guide with what
-to watch, long command lines, response rules and their limits and ready-made configurations in
-[examples/php/](examples/php/): [php.md](docs/php.md).
+(PHP-FPM, Apache with mod_php, CGI, CLI) there is a kit in [emerging-threats/](emerging-threats/): ready-made
+configurations and the full guide.
 
 License: GPL-3.0, see [LICENSE](LICENSE). The sources of the eBPF programs carry `GPL-2.0-or-later` (compatible with
 GPL-3.0); the object carries the license `GPL`, which the kernel requires for GPL-only helpers.

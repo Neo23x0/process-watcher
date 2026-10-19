@@ -37,7 +37,7 @@ Watch **the process that runs PHP**, not the web server in front of it: a watch 
 | PHP CLI (cron, queue workers) | `php/php-cli-workers.yaml` |
 
 Not sure which one applies? `ps -eo pid,ppid,user,comm,args --forest | grep -E 'php|apache2|httpd'` shows what executes
-PHP ([how to read it](php.md#2-which-executable-to-watch)). Check the file without root:
+PHP ([how to read it](guide.md#2-which-executable-to-watch)). Check the file without root:
 
 ```bash
 ./process-watcher check-config --config php/php-fpm-observe.yaml     # "configuration OK"
@@ -53,7 +53,7 @@ sudo ./process-watcher --config php/php-fpm-observe.yaml       # stop with Ctrl-
 Events go to `/var/log/process-watcher/events.jsonl` (the agent creates the directory, readable by root only). Command
 lines are recorded because the configurations switch that on; they can contain secrets, which is one reason the log is
 root-only. Keep it running in `tmux` or `screen` for a first look, or as a systemd service
-([packaging/INSTALL.md](../packaging/INSTALL.md)).
+([packaging/INSTALL.md](../../packaging/INSTALL.md)).
 
 ## 4. See what PHP starts
 
@@ -88,7 +88,7 @@ sudo tail -f /var/log/process-watcher/events.jsonl | jq -r '
 
 Applications start mailers, converters and sometimes a shell for good reasons: it is a signal to look at, not proof.
 Send the events to your SIEM or log pipeline with `--tcp-address` or `--webhook-url`
-([outputs](outputs.md)), and keep a copy where the web server user cannot write.
+([outputs](../../docs/outputs.md)), and keep a copy where the web server user cannot write.
 
 ## 5. Optional: let it react (dry run first)
 
@@ -118,7 +118,7 @@ sudo tail -f /var/log/process-watcher/events.jsonl | jq -r '
 
 Every `dry_run` line is a program that would have been killed. Let it see your real traffic first, a day if you can. If
 the list holds only what you do not want, switch to real termination; if your application legitimately needs shells,
-narrow the first rule instead ([php.md, section 6](php.md#6-response-rules)).
+narrow the first rule instead ([php.md, section 6](guide.md#6-response-rules)).
 
 ```bash
 sudo ./process-watcher --config php/php-fpm-kill.yaml
@@ -137,7 +137,7 @@ sudo tail -f /var/log/process-watcher/events.jsonl | jq -r '
   and all 200 long-running helpers (the shape of a shell that stays open).
 - **Names differ by distribution.** The list has the names found on Debian 13 and Rocky 9 (`nc.openbsd`, `socat1`,
   `inetutils-telnet`, `ncat`, `ruby3.3`, ...). Check yours; on Alpine every applet is `busybox`
-  ([php.md](php.md#6-response-rules)).
+  ([php.md](guide.md#6-response-rules)).
 - **Only PHP-FPM ships response rules.** For other setups, copy the `kill:` block of `php/php-fpm-dry-run.yaml` into your
   observe file and run `check-config` on the result.
 - **Your own command-line signatures** go into `php/php-fpm-kill-signatures.yaml` (placeholders; no patterns are shipped).
@@ -152,11 +152,11 @@ sudo tail -f /var/log/process-watcher/events.jsonl | jq -r '
 - **A burst can overflow the kernel buffer.** Losses are counted (`agent.health`) and reported (`agent.gap`); the agent
   takes no action on a lineage it cannot confirm.
 
-More: [php.md](php.md) (every deployment, argument limits, measurements, what was and was not verified),
-[kill-rules.md](kill-rules.md), [events.md](events.md).
+More: [php.md](guide.md) (every deployment, argument limits, measurements, what was and was not verified),
+[kill-rules.md](../../docs/kill-rules.md), [events.md](../../docs/events.md).
 
 *Tested from an unpacked release archive built from the sources, against nginx 1.26 and PHP 8.4-FPM on Debian 13 (kernel
 6.12, arm64): `doctor`, `check-config`, the observe, dry-run and kill configurations, every `jq` filter above, and that
 `mail()` starts its command through a shell (the download lines are the README's). Not run with these commands: amd64,
-other distributions and PHP versions, Apache `mod_php` ([php.md](php.md#9-verified-and-not-verified) says what was
+other distributions and PHP versions, Apache `mod_php` ([php.md](guide.md#9-verified-and-not-verified) says what was
 checked elsewhere).*

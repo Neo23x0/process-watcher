@@ -13,8 +13,8 @@
 # The netcat and socat family are symlinks or alternatives on most distributions, so the plain command
 # name is often not what gets executed: verified with the real agent against Debian 13 (nc -> nc.openbsd,
 # socat -> socat1, telnet -> inetutils-telnet) and by executable path against Rocky 9 (nc -> ncat, socat
-# and telnet unversioned); see docs/php.md. Add names you find on your own distribution the same way:
-# the "Read-only discovery" commands in docs/php.md section 2 work for any executable, not only PHP's.
+# and telnet unversioned); see emerging-threats/php-rce-october-26/guide.md. Add names you find on your own distribution the same way:
+# the "Read-only discovery" commands in emerging-threats/php-rce-october-26/guide.md section 2 work for any executable, not only PHP's.
 config_version: 1
 watch:
   image_contains: ["php-fpm"]

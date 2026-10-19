@@ -11,8 +11,9 @@
 // with one directory of the same name holding: the binary process-watcher,
 // the example configuration process-watcher.yaml (the agent finds a
 // configuration next to its binary by itself), the LICENSE, and below php/
-// every file of examples/php/ (the PHP deployment configurations of
-// docs/php.md) so they are usable right after unpacking, without cloning the
+// every file of the PHP kit's configs/ directory
+// (emerging-threats/php-rce-october-26/configs/) so they are usable right
+// after unpacking, without cloning the
 // repository. A file <out>/SHA256SUMS lists the archives.
 //
 // Archive metadata is fixed (owner root, modification time from
@@ -224,7 +225,7 @@ func run() error {
 	root := flag.String("root", ".", "repository root")
 	config := flag.String("config", filepath.Join("examples", "process-watcher.full.yaml"), "configuration file shipped as process-watcher.yaml, relative to -root")
 	license := flag.String("license", "LICENSE", "license file, relative to -root")
-	phpExamples := flag.String("php-examples", filepath.Join("examples", "php"), "directory of PHP example configurations shipped below php/, relative to -root")
+	phpExamples := flag.String("php-examples", filepath.Join("emerging-threats", "php-rce-october-26", "configs"), "directory of the PHP configurations shipped below php/, relative to -root")
 	epoch := flag.Int64("source-date-epoch", 0, "modification time of the archive entries in seconds (default: SOURCE_DATE_EPOCH or the last commit)")
 	flag.Parse()
 

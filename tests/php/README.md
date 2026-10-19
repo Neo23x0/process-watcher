@@ -1,7 +1,7 @@
 # PHP lab
 
 Checks the shapes of real PHP deployments against the real nginx, Apache and PHP of a distribution, with the real
-agent. It is the evidence behind [docs/php.md](../../docs/php.md). The Go integration tests
+agent. It is the evidence behind [PHP guide](../../emerging-threats/php-rce-october-26/guide.md). The Go integration tests
 ([tests/integration/php_test.go](../integration/php_test.go)) cover the same shapes with harmless helper programs and
 run in CI; this lab needs Docker and network access and is run by hand.
 
@@ -37,5 +37,5 @@ the request, never a command.
   `docker rm -f pw-php-lab-run`.
 - The `broad` scenario makes a real PHP-FPM service in the container fail on purpose (thousands of kills in a few
   seconds). It only touches processes below the master of that container.
-- Timing numbers (`latency`) come from the machine you run it on. The ones quoted in docs/php.md are from an arm64
+- Timing numbers (`latency`) come from the machine you run it on. The ones quoted in the PHP guide are from an arm64
   Docker VM with a native kernel.

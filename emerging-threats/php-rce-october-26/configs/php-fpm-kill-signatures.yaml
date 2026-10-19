@@ -10,7 +10,7 @@
 #    eval or base64 defeats a literal or near-literal match. This layer catches reuse, not adaptation.
 #  - argv matching only ever sees what reaches the executed program as an argument. Code read from stdin,
 #    a file, an environment variable or assembled at runtime inside the interpreter never appears here
-#    (the same blind spot as the rest of the kill feature, see docs/php.md section 5).
+#    (the same blind spot as the rest of the kill feature, see emerging-threats/php-rce-october-26/guide.md section 5).
 #  - a cut argument can never match (docs/kill-rules.md, "Validation"): keep your patterns well inside
 #    capture.argv_max_bytes, and know that a payload longer than the limit silently stops matching.
 #  - every rule is OR-combined with every other rule and reported together (docs/kill-rules.md,
@@ -21,7 +21,7 @@
 # Go RE2 regular expression tested against one argument at a time (field: argv), unanchored by default:
 # anchor with ^ and $ for the whole argument. Validate the YAML and every regex with:
 #
-#   process-watcher check-config --config examples/php/php-fpm-kill-signatures.yaml
+#   process-watcher check-config --config php/php-fpm-kill-signatures.yaml
 #
 # then run with kill.dry_run: true (the default below) and review response.kill_requested /
 # response.kill_result in your own traffic before ever switching to dry_run: false.

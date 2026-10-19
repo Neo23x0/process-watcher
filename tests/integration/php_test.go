@@ -9,7 +9,7 @@ package integration
 // test host is selected; matching is by substring, so the prefix changes
 // nothing about what is tested.
 //
-// What they establish is documented in docs/php.md; tests/php/ checks the same
+// What they establish is documented in the PHP guide (emerging-threats/php-rce-october-26/guide.md); tests/php/ checks the same
 // shapes against the real nginx, Apache and PHP of a distribution.
 
 import (

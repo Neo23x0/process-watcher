@@ -163,7 +163,7 @@ func TestWriteArchiveCreatesSubdirectoryHeaders(t *testing.T) {
 }
 
 func TestLoadPHPExamples(t *testing.T) {
-	entries, err := loadPHPExamples(filepath.Join("..", "..", "examples", "php"))
+	entries, err := loadPHPExamples(filepath.Join("..", "..", "emerging-threats", "php-rce-october-26", "configs"))
 	if err != nil {
 		t.Fatal(err)
 	}

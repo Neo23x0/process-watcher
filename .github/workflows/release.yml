@@ -10,7 +10,7 @@ name: Release
 #
 # The release contains one archive per architecture (linux/amd64, linux/arm64)
 # with the single static binary, the example configuration process-watcher.yaml,
-# the LICENSE, and below php/ the PHP deployment configurations of docs/php.md,
+# the LICENSE, and below php/ the PHP deployment configurations of the emerging-threats PHP kit,
 # plus SHA256SUMS. The archives are built by tools/release; `make
 # release-archives VERSION=v0.1.0` produces the same bytes locally.
 #

@@ -48,7 +48,7 @@ func TestShippedConfigurationsAreValid(t *testing.T) {
 	var files []string
 	for _, pattern := range []string{
 		filepath.Join("..", "..", "examples", "*.yaml"),
-		filepath.Join("..", "..", "examples", "php", "*.yaml"),
+		filepath.Join("..", "..", "emerging-threats", "php-rce-october-26", "configs", "*.yaml"),
 		filepath.Join("..", "..", "packaging", "config", "*.yaml"),
 	} {
 		m, err := filepath.Glob(pattern)
