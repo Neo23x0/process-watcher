@@ -28,6 +28,10 @@ It makes the activity visible; it does not judge it. Building a baseline or deci
 or to the system that receives the events (log file, SIEM, webhook). Optionally it can react to specific child
 processes with a targeted `SIGKILL` ([Kill rules](#kill-rules)).
 
+<p align="center">
+  <img src="docs/images/process-watcher-overview.svg" alt="How process-watcher works: it watches every program whose name contains your text (here php-fpm) and everything it starts, writes each start, program change and exit to a local JSON log, optionally sends the events over TCP, UDP or a webhook, and can kill matching child processes such as a reverse shell (kill rules).">
+</p>
+
 ## Quick start
 
 **1. Download and unpack** the latest [release](https://github.com/Neo23x0/process-watcher/releases) (`amd64` or

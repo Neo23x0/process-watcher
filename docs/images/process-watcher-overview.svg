@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="588" viewBox="0 0 960 588" role="img" aria-labelledby="t d">
+<title id="t">How process-watcher works</title>
+<desc id="d">process-watcher follows every program whose file name contains a text you choose, for example php-fpm, and every process they start. It sees each start, program change and exit in the kernel, writes every event to a local JSON log and can forward it to a TCP, UDP or webhook target. Optional kill rules, your detection patterns, send SIGKILL to matching child processes.</desc>
+<defs>
+<style>
+.h1{font-family:Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;font-size:21px;font-weight:700;letter-spacing:3px;fill:#ff2794}
+.tag{font-family:"Helvetica Neue", Helvetica, Arial, "Liberation Sans", "DejaVu Sans", sans-serif;font-size:16px;font-weight:400;fill:#cfe4eb}
+.req{font-family:Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;font-size:11.5px;font-weight:400;fill:#7596a3}
+.lbl{font-family:Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;font-size:13.5px;font-weight:700;letter-spacing:2px;fill:#29fbf5}
+.lbls{font-family:Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;font-size:13px;font-weight:700;letter-spacing:1.5px;fill:#29fbf5}
+.ttl{font-family:"Helvetica Neue", Helvetica, Arial, "Liberation Sans", "DejaVu Sans", sans-serif;font-size:17px;font-weight:700;fill:#eaf6f9}
+.ttl2{font-family:"Helvetica Neue", Helvetica, Arial, "Liberation Sans", "DejaVu Sans", sans-serif;font-size:15px;font-weight:700;fill:#eaf6f9}
+.bd{font-family:"Helvetica Neue", Helvetica, Arial, "Liberation Sans", "DejaVu Sans", sans-serif;font-size:13px;font-weight:400;fill:#a9c3cd}
+.sm{font-family:"Helvetica Neue", Helvetica, Arial, "Liberation Sans", "DejaVu Sans", sans-serif;font-size:12px;font-weight:400;fill:#a9c3cd}
+.smm{font-family:"Helvetica Neue", Helvetica, Arial, "Liberation Sans", "DejaVu Sans", sans-serif;font-size:12px;font-weight:400;fill:#7596a3}
+.mn{font-family:Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;font-size:11.5px;font-weight:400;fill:#29fbf5}
+.mns{font-family:Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;font-size:11.5px;font-weight:400;fill:#7596a3}
+.mnb{font-family:Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;font-size:12px;font-weight:700;fill:#29fbf5}
+.pill{font-family:Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;font-size:12.5px;font-weight:700;fill:#eaf6f9}
+.bdg{font-family:Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;font-size:13px;font-weight:700;fill:#001216}
+.chip{font-family:Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;font-size:10.5px;font-weight:700;letter-spacing:0.5px;fill:#001216}
+</style>
+<linearGradient id="gEye" gradientUnits="userSpaceOnUse" x1="-23" y1="0" x2="23" y2="0"><stop offset="0" stop-color="#ff2794"/><stop offset=".5" stop-color="#ff2794"/><stop offset=".5" stop-color="#29fbf5"/><stop offset="1" stop-color="#29fbf5"/></linearGradient>
+<linearGradient id="gAgent" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff2794"/><stop offset=".5" stop-color="#9a3fb8"/><stop offset="1" stop-color="#29fbf5"/></linearGradient>
+<linearGradient id="gDiv" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ff2794" stop-opacity=".9"/><stop offset=".55" stop-color="#29fbf5" stop-opacity=".55"/><stop offset="1" stop-color="#29fbf5" stop-opacity=".05"/></linearGradient>
+<marker id="aC" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#29fbf5"/></marker>
+<marker id="aP" viewBox="0 0 10 10" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#ff2794"/></marker>
+<filter id="glow" x="-12%" y="-8%" width="124%" height="116%"><feGaussianBlur stdDeviation="5"/></filter>
+<pattern id="dots" width="16" height="16" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".8" fill="#0d2b35"/></pattern>
+</defs>
+<!-- background, frame and corner marks -->
+<rect width="960" height="588" fill="#001216"/>
+<rect width="960" height="588" fill="url(#dots)" opacity=".55"/>
+<rect x="6" y="6" width="948" height="576" fill="none" stroke="#0e2b36" stroke-width="1"/>
+<path d="M6,28 L6,6 L28,6" fill="none" stroke="#ff2794" stroke-width="2.2"/>
+<path d="M954,28 L954,6 L932,6" fill="none" stroke="#29fbf5" stroke-width="2.2"/>
+<path d="M6,560 L6,582 L28,582" fill="none" stroke="#ff2794" stroke-width="2.2"/>
+<path d="M954,560 L954,582 L932,582" fill="none" stroke="#29fbf5" stroke-width="2.2"/>
+<!-- header: title, tagline, requirements -->
+<text x="20" y="46" class="h1" xml:space="preserve"><tspan fill="#ff2794">PROCESS-WATCHER</tspan><tspan fill="#7596a3">  /  </tspan><tspan fill="#29fbf5">HOW IT WORKS</tspan></text>
+<text x="20" y="74" class="tag">Follow a service. See what it starts. React to what you name.</text>
+<text x="940" y="40" class="req" text-anchor="end">Linux 5.15+ with BTF  ·  amd64  ·  arm64</text>
+<text x="940" y="58" class="req" text-anchor="end">one static binary  ·  needs root</text>
+<rect x="20" y="91" width="920" height="2" fill="url(#gDiv)"/>
+<!-- panel 1, WATCH: the substring flag and the process tree (sshd and cron are not watched) -->
+<path d="M34,116 L284,116 L284,510 L270,524 L20,524 L20,130 Z" fill="#04181f" stroke="#15434f" stroke-width="1.25"/>
+<rect x="36" y="132" width="22" height="22" rx="4" fill="#29fbf5"/>
+<text x="47.0" y="147.6" class="bdg" text-anchor="middle">1</text>
+<text x="68" y="148.5" class="lbl">WATCH</text>
+<text x="36" y="182" class="ttl">Pick a service by name</text>
+<text x="36" y="204" class="bd">Any program whose name contains</text>
+<text x="36" y="220" class="bd">your text is a watched root.</text>
+<text x="36" y="236" class="bd">All its children are followed.</text>
+<rect x="36" y="250" width="232" height="28" rx="5" fill="#031016" stroke="#1a5666" stroke-width="1.2"/>
+<text x="46" y="268.2" class="mn" xml:space="preserve"><tspan fill="#5fb9c4">--watch-image-contains </tspan><tspan fill="#eaf6f9">php-fpm</tspan></text>
+<rect x="36" y="306" width="54" height="24" rx="5" fill="none" stroke="#1d3d48" stroke-width="1.2" stroke-dasharray="3 3"/>
+<text x="63.0" y="322.5" class="pill" text-anchor="middle" style="fill:#56737f;font-weight:400;">sshd</text>
+<text x="102" y="322" class="mns">ignored</text>
+<rect x="36" y="334" width="77" height="24" rx="5" fill="#29fbf5" fill-opacity=".14" stroke="#29fbf5" stroke-width="1.6"/>
+<text x="74.5" y="350.5" class="pill" text-anchor="middle" style="fill:#29fbf5;">php-fpm</text>
+<text x="125" y="350" class="mns" style="fill:#29fbf5;">watched root</text>
+<rect x="58" y="362" width="46" height="24" rx="5" fill="#29fbf5" fill-opacity=".05" stroke="#2c7480" stroke-width="1.3"/>
+<text x="81.0" y="378.5" class="pill" text-anchor="middle">sh</text>
+<text x="116" y="378" class="mns">child</text>
+<rect x="80" y="390" width="54" height="24" rx="5" fill="#29fbf5" fill-opacity=".05" stroke="#2c7480" stroke-width="1.3"/>
+<text x="107.0" y="406.5" class="pill" text-anchor="middle">curl</text>
+<text x="146" y="406" class="mns">grandchild</text>
+<rect x="80" y="418" width="54" height="24" rx="5" fill="#ff2794" fill-opacity=".14" stroke="#ff2794" stroke-width="1.6"/>
+<text x="107.0" y="434.5" class="pill" text-anchor="middle" style="fill:#ff5cae;">bash</text>
+<text x="146" y="434" class="mns" style="fill:#ff5cae;">reverse shell</text>
+<rect x="36" y="446" width="54" height="24" rx="5" fill="none" stroke="#1d3d48" stroke-width="1.2" stroke-dasharray="3 3"/>
+<text x="63.0" y="462.5" class="pill" text-anchor="middle" style="fill:#56737f;font-weight:400;">cron</text>
+<text x="102" y="462" class="mns">ignored</text>
+<path d="M47,358 V374 H58" fill="none" stroke="#2c7480" stroke-width="1.5"/>
+<path d="M69,386 V430" fill="none" stroke="#2c7480" stroke-width="1.5"/>
+<path d="M69,402 H80" fill="none" stroke="#2c7480" stroke-width="1.5"/>
+<path d="M69,430 H80" fill="none" stroke="#2c7480" stroke-width="1.5"/>
+<circle cx="251" cy="430" r="9" fill="#001216" stroke="#ff2794" stroke-width="1.6"/>
+<path d="M247.4,426.4 L254.6,433.6 M254.6,426.4 L247.4,433.6" stroke="#ff2794" stroke-width="2" stroke-linecap="round"/>
+<text x="36" y="496" class="smm">Children stay tracked through exec,</text>
+<text x="36" y="512" class="smm">double forks and reparenting.</text>
+<!-- panel 2, the agent: 2 OBSERVE (events) and 4 REACT (optional kill rules) -->
+<path d="M362,116 L612,116 L612,510 L598,524 L348,524 L348,130 Z" fill="none" stroke="url(#gAgent)" stroke-width="4" opacity=".55" filter="url(#glow)"/>
+<path d="M362,116 L612,116 L612,510 L598,524 L348,524 L348,130 Z" fill="#04181f" stroke="url(#gAgent)" stroke-width="1.8"/>
+<g transform="translate(384,150) scale(1.0)">
+<path d="M0,-21 L23,17 L-23,17 Z" fill="#001216" stroke="url(#gEye)" stroke-width="2.4" stroke-linejoin="round"/>
+<path d="M-13,5 Q0,-7 13,5 Q0,17 -13,5 Z" fill="#001216" stroke="url(#gEye)" stroke-width="1.8" stroke-linejoin="round"/>
+<circle cx="0" cy="5" r="4.8" fill="#29fbf5"/><circle cx="0" cy="5" r="1.9" fill="#001216"/>
+<circle cx="-1.4" cy="3.6" r=".9" fill="#ffffff"/>
+</g>
+<text x="420" y="146" class="lbls">process-watcher</text>
+<text x="420" y="164" class="smm">eBPF in the kernel, no polling</text>
+<rect x="360" y="188" width="240" height="146" rx="7" fill="#072129" stroke="#15434f" stroke-width="1.2"/>
+<rect x="372" y="200" width="20" height="20" rx="4" fill="#29fbf5"/>
+<text x="382.0" y="214.6" class="bdg" text-anchor="middle">2</text>
+<text x="400" y="215" class="lbls">OBSERVE</text>
+<line x1="394" y1="250" x2="566" y2="250" stroke="#2c7480" stroke-width="2"/>
+<circle cx="394" cy="250" r="6" fill="#001216" stroke="#29fbf5" stroke-width="2.2"/>
+<text x="394" y="277" class="bd" text-anchor="middle">start</text>
+<text x="394" y="293" class="mns" text-anchor="middle">fork</text>
+<circle cx="480" cy="250" r="6" fill="#001216" stroke="#29fbf5" stroke-width="2.2"/>
+<text x="480" y="277" class="bd" text-anchor="middle">new program</text>
+<text x="480" y="293" class="mns" text-anchor="middle">exec</text>
+<circle cx="566" cy="250" r="6" fill="#001216" stroke="#29fbf5" stroke-width="2.2"/>
+<text x="566" y="277" class="bd" text-anchor="middle">exit</text>
+<text x="566" y="293" class="mns" text-anchor="middle">exit</text>
+<text x="374" y="316" class="sm">Short-lived processes included.</text>
+<rect x="360" y="346" width="240" height="168" rx="7" fill="#072129" stroke="#7a1d52" stroke-width="1.2" stroke-dasharray="5 4"/>
+<rect x="372" y="358" width="20" height="20" rx="4" fill="#ff2794"/>
+<text x="382.0" y="372.6" class="bdg" text-anchor="middle">4</text>
+<text x="400" y="373" class="lbls" style="fill:#ff2794;">REACT</text>
+<text x="588" y="372" class="mns" text-anchor="end">optional</text>
+<text x="374" y="400" class="ttl2">Kill rules</text>
+<text x="374" y="416" class="sm">your detection patterns, e.g.:</text>
+<text x="374" y="438" class="mnb" xml:space="preserve"><tspan fill="#7596a3">strings </tspan><tspan fill="#eaf6f9">ncat</tspan></text>
+<text x="374" y="456" class="mnb" xml:space="preserve"><tspan fill="#7596a3">regex   </tspan><tspan fill="#eaf6f9">^bash$</tspan></text>
+<text x="374" y="474" class="smm">on program name, path or args</text>
+<rect x="374" y="484" width="62" height="20" rx="4" fill="#ff2794"/>
+<text x="405" y="498" class="chip" text-anchor="middle">SIGKILL</text>
+<text x="446" y="498" class="sm">to a matching child</text>
+<!-- panel 3, RECORD AND SEND: local log (always) and optional TCP, UDP, webhook -->
+<path d="M690,116 L940,116 L940,510 L926,524 L676,524 L676,130 Z" fill="#04181f" stroke="#15434f" stroke-width="1.25"/>
+<rect x="692" y="132" width="22" height="22" rx="4" fill="#29fbf5"/>
+<text x="703.0" y="147.6" class="bdg" text-anchor="middle">3</text>
+<text x="724" y="148.5" class="lbl">RECORD &amp; SEND</text>
+<rect x="688" y="164" width="240" height="108" rx="7" fill="#072129" stroke="#29fbf5" stroke-width="1.4"/>
+<path d="M702,178 L716,178 L724,186 L724,206 L702,206 Z" fill="none" stroke="#29fbf5" stroke-width="1.6" stroke-linejoin="round"/>
+<path d="M716,178 L716,186 L724,186" fill="none" stroke="#29fbf5" stroke-width="1.6" stroke-linejoin="round"/>
+<line x1="707" y1="190" x2="719" y2="190" stroke="#29fbf5" stroke-width="1.4" stroke-opacity=".8"/>
+<line x1="707" y1="195" x2="719" y2="195" stroke="#29fbf5" stroke-width="1.4" stroke-opacity=".8"/>
+<line x1="707" y1="200" x2="714" y2="200" stroke="#29fbf5" stroke-width="1.4" stroke-opacity=".8"/>
+<text x="736" y="194" class="ttl2">Local log</text>
+<rect x="846" y="178" width="70" height="18" rx="4" fill="#29fbf5"/>
+<text x="881" y="190.6" class="chip" text-anchor="middle">ALWAYS ON</text>
+<text x="736" y="214" class="mn">process-watcher.jsonl</text>
+<text x="702" y="240" class="sm">One JSON event per line.</text>
+<text x="702" y="256" class="sm">Kill decisions are logged here too.</text>
+<rect x="688" y="284" width="240" height="230" rx="7" fill="#05202a" stroke="#2a8791" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="702" y="308" class="mns">OPTIONAL TARGETS</text>
+<text x="702" y="326" class="sm">SIEM, log pipeline, own receiver</text>
+<rect x="702" y="346" width="46" height="30" rx="5" fill="none" stroke="#29fbf5" stroke-width="1.5"/>
+<text x="725" y="365.5" class="mnb" text-anchor="middle">TCP</text>
+<text x="756" y="359" class="ttl2">TCP</text>
+<text x="756" y="375" class="sm">JSON lines, optional TLS</text>
+<rect x="702" y="402" width="46" height="30" rx="5" fill="none" stroke="#29fbf5" stroke-width="1.5"/>
+<text x="725" y="421.5" class="mnb" text-anchor="middle">UDP</text>
+<text x="756" y="415" class="ttl2">UDP</text>
+<text x="756" y="431" class="sm">one event per datagram</text>
+<rect x="702" y="458" width="46" height="30" rx="5" fill="none" stroke="#29fbf5" stroke-width="1.5"/>
+<text x="725" y="477.5" class="mnb" text-anchor="middle">HTTP</text>
+<text x="756" y="471" class="ttl2">Webhook</text>
+<text x="756" y="487" class="sm">HTTP POST per event</text>
+<!-- arrows: events in (cyan), outputs (solid and dashed), kill path (pink) -->
+<line x1="284" y1="261" x2="359" y2="261" stroke="#29fbf5" stroke-width="2" marker-end="url(#aC)"/>
+<text x="316.0" y="253" class="mns" text-anchor="middle">events</text>
+<line x1="600" y1="261" x2="644" y2="261" stroke="#29fbf5" stroke-width="2"/>
+<line x1="644" y1="218" x2="644" y2="399" stroke="#29fbf5" stroke-width="2" stroke-dasharray="5 4"/>
+<line x1="644" y1="218" x2="644" y2="261" stroke="#29fbf5" stroke-width="2"/>
+<line x1="644" y1="218" x2="687" y2="218" stroke="#29fbf5" stroke-width="2" marker-end="url(#aC)"/>
+<line x1="644" y1="399" x2="687" y2="399" stroke="#29fbf5" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#aC)"/>
+<circle cx="644" cy="261" r="3.4" fill="#29fbf5"/>
+<line x1="359" y1="430" x2="268" y2="430" stroke="#ff2794" stroke-width="2" marker-end="url(#aP)"/>
+<circle cx="360" cy="430" r="3.4" fill="#ff2794"/>
+<text x="316.0" y="422" class="mns" text-anchor="middle" style="fill:#ff5cae;font-weight:700;">SIGKILL</text>
+<!-- footer: legend and the reaction note -->
+<line x1="20" y1="544" x2="940" y2="544" stroke="#0f3340" stroke-width="1"/>
+<line x1="20" y1="562" x2="52" y2="562" stroke="#29fbf5" stroke-width="2"/>
+<text x="60" y="566" class="smm">always on</text>
+<line x1="138" y1="562" x2="170" y2="562" stroke="#29fbf5" stroke-width="2" stroke-dasharray="5 4"/>
+<text x="178" y="566" class="smm">optional</text>
+<line x1="246" y1="562" x2="278" y2="562" stroke="#ff2794" stroke-width="2"/>
+<text x="286" y="566" class="smm">kill path</text>
+<text x="940" y="566" class="smm" text-anchor="end">Reaction, not prevention: a kill follows the detection.</text>
+</svg>
