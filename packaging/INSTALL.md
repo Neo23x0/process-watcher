@@ -12,14 +12,15 @@ namespace; running in a container is refused.
 
 ## Install
 
-The binary comes from a [release](https://github.com/Neo23x0/process-watcher/releases) (unpack the archive, see the
-[README](../README.md#installation)) or from `make build-linux`; `install.sh` and the unit are in this directory of
-the repository.
+Every [release](https://github.com/Neo23x0/process-watcher/releases) archive holds the binary and, in its own
+`packaging/` directory, `install.sh`, the unit and the configuration it installs (not this page): unpack it, see the
+[README](../README.md#installation), and run `install.sh` from there. In a clone of the repository the same files are
+in this directory, and `make build-linux` builds the binary.
 
 ```bash
-# either the binary from an unpacked release archive ...
-sudo ./packaging/install.sh /path/to/process-watcher
-# ... or one you built yourself:
+# either from inside the unpacked release archive (the directory of the README quick start) ...
+sudo ./packaging/install.sh ./process-watcher
+# ... or from a clone of the repository, with a binary you built yourself:
 make build-linux
 sudo ./packaging/install.sh ./dist/process-watcher-linux-amd64    # arm64: ...-linux-arm64
 # then, in both cases:
@@ -80,7 +81,9 @@ the service.
   `agent.started` names the start window in which history is unknown.
 - The agent rotates the log itself (`outputs.file.rotate_size_mb`, `keep_files`). Do **not** use external rotation
   through `logrotate` (rename/copytruncate).
-- Update: copy the new binary to `/usr/local/bin/process-watcher` and restart.
+- Update: unpack the new release archive and run `install.sh` again. It replaces the binary and the unit, keeps
+  `/etc/process-watcher/config.yaml` and your drop-ins and reloads systemd; then `sudo systemctl restart process-watcher`.
+  (Copying the new binary to `/usr/local/bin/process-watcher` and restarting works too.)
 
 ## Uninstalling
 
