@@ -52,12 +52,12 @@ root-only. Keep it running in `tmux` or `screen` for a first look, or as a syste
 
 ## 4. See what PHP starts
 
-In a second terminal:
+In a second terminal (control characters in names and arguments are printed as `?`: an attacker chooses them):
 
 ```bash
 sudo tail -f /var/log/process-watcher/events.jsonl | jq -r '
   select(.event_type=="process.exec" and .lineage.role=="descendant")
-  | "\(.timestamp[:19])Z  \(.root.image) > \(.process.image)  \(.process.argv // [] | join(" "))"'
+  | "\(.timestamp[:19])Z  \(.root.image) > \(.process.image)  \(.process.argv // [] | join(" "))" | gsub("[[:cntrl:]]"; "?")'
 ```
 
 ```
@@ -77,8 +77,8 @@ never starts programs: `agent.started` and `agent.ready` prove the agent is aliv
 ```bash
 sudo tail -f /var/log/process-watcher/events.jsonl | jq -r '
   select(.event_type=="process.exec" and .lineage.role=="descendant"
-    and (.process.image | test("^(sh|dash|bash|zsh|ksh|ash|busybox|python[0-9.]*|perl[0-9.]*|ruby[0-9.]*|php[0-9.]*|nc|nc\\..*|ncat|socat[0-9]*|(inetutils-)?telnet|curl|wget)$")))
-  | "\(.timestamp[:19])Z  \(.root.image) > \(.process.image)  \(.process.argv // [] | join(" "))"'
+    and (.process.image | test("^(sh|dash|bash|zsh|ksh|ash|busybox|python[0-9.]*|perl[0-9.]*|ruby[0-9.]*|php[0-9.]*|nc|nc[.].*|ncat|socat[0-9]*|(inetutils-)?telnet|curl|wget)$")))
+  | "\(.timestamp[:19])Z  \(.root.image) > \(.process.image)  \(.process.argv // [] | join(" "))" | gsub("[[:cntrl:]]"; "?")'
 ```
 
 Applications start mailers, converters and sometimes a shell for good reasons: it is a signal to look at, not proof.
@@ -104,18 +104,31 @@ arguments); the log file holds the full events.
 sudo ./process-watcher --config php/php-fpm-kill-signatures.yaml
 ```
 
+In the second terminal use this filter instead of step 4's, which shows only `process.exec` and so never a kill decision.
+It prints the exec, the decision with the rules that matched, and a death by signal 9. Control characters in names and
+arguments, which an attacker chooses, are printed as `?` so that they cannot forge lines or drive your terminal:
+
 ```bash
 sudo tail -f /var/log/process-watcher/events.jsonl | jq -r '
-  select(.event_type=="response.kill_result" and (.details.exec_index // 0) > 0)
-  | "\(.timestamp[:19])Z  \(.details.outcome)  \(.process.image)  \(.process.argv // [] | join(" "))"'
+  select((.event_type=="process.exec" and .lineage.role=="descendant")
+      or (.event_type=="response.kill_result" and (.details.exec_index // 0) > 0)
+      or (.event_type=="process.exit" and .details.signal==9))
+  | ("\(.timestamp[:19])Z  " + (
+      if .event_type=="response.kill_result" then "=> " + (.details.summary // "\(.details.outcome) \(.process.image)")
+      elif .event_type=="process.exit" then "=> exited by signal 9: \(.process.image) (pid \(.process.pid))"
+      else "\(.root.image) > \(.process.image)  \(.process.argv // [] | join(" "))" end))
+  | gsub("[[:cntrl:]]"; "?")'
 ```
 
 ```
-2026-10-19T12:41:08Z  dry_run  dash  sh -c -- uname -s
-2026-10-19T12:41:08Z  dry_run  python3.13  python3 -c print(40+2)
+2026-10-20T21:09:47Z  php-fpm8.4 > bash  sh -c -- uname -s 2>&1
+2026-10-20T21:09:47Z  => dry run, no signal sent, would have killed bash (pid 632, exec 1, uid 33), started by php-fpm8.4 (pid 592) below php-fpm8.4 (pid 591); matched kill.regex[0] "^(sh|dash|bash|zsh|ksh|ash)$" in image, argv[0]
+2026-10-20T21:09:47Z  php-fpm8.4 > uname  uname -s
 ```
 
-Every `dry_run` line is a program that would have been killed. Let it see your real traffic first, a day if you can. If
+Every `=> dry run` line is a program that would have been killed. The sentence is `details.summary` of the
+`response.kill_result` event; the same event has the matching rules with their patterns in `details.rules`, the
+process, its parent and the ancestors. Let it see your real traffic first, a day if you can. If
 the list holds only what you do not want, switch to real termination with the same file; if your application
 legitimately needs shells, narrow the first rule instead ([guide.md, section 6](guide.md#6-response-rules)).
 
@@ -123,13 +136,16 @@ legitimately needs shells, narrow the first rule instead ([guide.md, section 6](
 sudo ./process-watcher --config php/php-fpm-kill-signatures.yaml --kill-dry-run=false
 ```
 
-The same filter now shows `signal_sent`; the matching `process.exit` with signal 9 confirms the death:
+The same filter now shows `SIGKILL sent` and the death by signal 9 (the death can be logged just before the decision
+line: the process is gone within a millisecond):
 
-```bash
-sudo tail -f /var/log/process-watcher/events.jsonl | jq -r '
-  select(.event_type=="process.exit" and .details.signal==9)
-  | "\(.timestamp[:19])Z  killed  \(.process.image)  signal \(.details.signal)"'
 ```
+2026-10-20T21:09:50Z  php-fpm8.4 > bash  sh -c -- uname -s 2>&1
+2026-10-20T21:09:50Z  => SIGKILL sent to bash (pid 667, exec 1, uid 33), started by php-fpm8.4 (pid 593) below php-fpm8.4 (pid 591); matched kill.regex[0] "^(sh|dash|bash|zsh|ksh|ash)$" in image, argv[0]
+2026-10-20T21:09:50Z  => exited by signal 9: bash (pid 667)
+```
+
+`SIGKILL sent` only says the kernel accepted the signal; the `process.exit` with signal 9 is what confirms the death.
 
 - **A reaction, not a block.** The signal is sent a fraction of a millisecond after the exec was seen. A program that
   lives less than about a millisecond can finish first: in the lab about 60 % of 200 one-command shells were killed,
@@ -160,6 +176,7 @@ More: [guide.md](guide.md) (every deployment, argument limits, measurements, wha
 sources: `doctor`, `check-config`, the image-identity response rules as a dry run and as real termination, and that
 `mail()` starts its command through a shell. In the PHP lab with the real agent: `php/php-observe.yaml` on PHP-FPM behind
 nginx and behind Apache, `mod_php`, `php-cgi`, `mod_fcgid` and a CLI worker next to FPM, and both observe `jq` filters
-on those events. Not run with these commands: the download lines, the command-line signatures (validated with
+on those events. The step 5 filter ran on a web shell request below PHP-FPM, as a dry run and with real termination. Not run with
+these commands: the download lines, the command-line signatures other than the `/dev/tcp` one (validated with
 `check-config` only), amd64, other distributions and PHP versions
 ([guide.md](guide.md#9-verified-and-not-verified) says what was checked elsewhere).*

@@ -253,17 +253,21 @@ type SysError struct {
 
 // KillDetails of response.kill_requested and response.kill_result.
 type KillDetails struct {
-	ActionID       string    `json:"action_id"`
-	TriggerEventID string    `json:"trigger_event_id"`
-	TriggerType    string    `json:"trigger_event_type"`
-	Action         string    `json:"action"` // "kill"
-	Signal         string    `json:"signal"` // "SIGKILL"
-	DryRun         bool      `json:"dry_run"`
-	ExecIndex      int       `json:"exec_index"`
-	Rules          []RuleHit `json:"rules"`
-	Outcome        string    `json:"outcome"`
-	Reason         *string   `json:"reason"`
-	Error          *SysError `json:"error"`
+	ActionID       string `json:"action_id"`
+	TriggerEventID string `json:"trigger_event_id"`
+	TriggerType    string `json:"trigger_event_type"`
+	Action         string `json:"action"` // "kill"
+	Signal         string `json:"signal"` // "SIGKILL"
+	DryRun         bool   `json:"dry_run"`
+	ExecIndex      int    `json:"exec_index"`
+	// Summary is one sentence for people reading the log: what was decided or
+	// done, to which process, who started it and which rules matched. The fields
+	// carry the same facts; the sentence holds no arguments.
+	Summary string    `json:"summary"`
+	Rules   []RuleHit `json:"rules"`
+	Outcome string    `json:"outcome"`
+	Reason  *string   `json:"reason"`
+	Error   *SysError `json:"error"`
 	// Times: the kernel time of the triggering record, the decision and the
 	// signal attempt; distances are in nanoseconds.
 	TriggerBootNS       string  `json:"trigger_boot_ns"`

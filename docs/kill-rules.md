@@ -128,8 +128,9 @@ share `details.action_id`; `details.trigger_event_id` refers to the triggering p
 removed from the output by exclusions or the depth limit). The events have `source: agent`, the target under
 `process`, `parent`, `root`, `lineage`, `data_quality`, and are stored locally and passed to the remote outputs
 independent of exclusions and output depth. `details` contains among others `action: kill`, `signal: SIGKILL`,
-`dry_run`, `exec_index`, all matching rules (`ref` like `kill.regex[0]`, `type`, `pattern`, `field`, for arguments
-`arg_index`), `outcome`, `reason`, the system error (`error.errno`), `decided_at`, `signal_attempted_at` and the
+`dry_run`, `exec_index`, `summary` (one sentence that says what was decided or done to which process, who started it
+and which rules matched, without arguments; written since v0.2.2), all matching rules (`ref` like `kill.regex[0]`,
+`type`, `pattern`, `field`, for arguments `arg_index`), `outcome`, `reason`, the system error (`error.errno`), `decided_at`, `signal_attempted_at` and the
 distances to the triggering kernel event (`decision_latency_ns`, `attempt_latency_ns`). Outcomes: `dry_run`,
 `signal_sent`, `already_exited`, `permission_denied`, `error`, `skipped` with a reason (`identity_unverified`,
 `identity_mismatch`, `match_no_longer_verified`, `action_queue_full`, `shutdown`, `lineage_unconfirmed`,
@@ -141,6 +142,12 @@ earlier events. The later `process.exit` of the instance carries `details.respon
 no causal claim) and only exit/signal data that were actually captured. An agent crash can leave an open `pending`.
 `agent.health` contains the counters: rule hits, signal attempts, signals accepted by the kernel, targets already
 gone, skipped actions by reason, errors, dry-run actions, queue length and latency.
+
+Every decision of a log, one sentence each (events of older versions have no `summary`, use `details.rules` there):
+
+```bash
+sudo jq -r 'select(.event_type=="response.kill_result") | "\(.timestamp)  \(.details.summary)"' /var/log/process-watcher/events.jsonl
+```
 
 **Confirmation.** `signal_sent` only says that the kernel accepted the signal. For a long-running target the exit
 confirms it (`process.exit` with `details.signal: 9` and the same `response_action_id`); a short-lived program can end

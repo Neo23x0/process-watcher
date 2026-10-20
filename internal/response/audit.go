@@ -54,6 +54,7 @@ func NewKillEvent(f *event.Factory, a *Action, typ string, r Result) *event.Even
 		Signal:            "SIGKILL",
 		DryRun:            a.DryRun,
 		ExecIndex:         a.ExecIndex,
+		Summary:           killSummary(a, r),
 		Rules:             ruleHits(a),
 		Outcome:           r.Outcome,
 		Error:             r.Err,

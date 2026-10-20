@@ -359,4 +359,5 @@ the cost of the larger limits there; other kernels and distributions; real amd64
 the arm64 Docker VM only); other PHP versions than 8.4 in behavior; `nc`/`socat`/`telnet`/`ruby`/`perl` executable names
 on Alpine or any distribution other than Debian 13 and Rocky 9; the command-line signatures of
 `php-fpm-kill-signatures.yaml` (written and committed by the maintainer, not generated here; validated with
-`check-config` only, never against a constructed payload or live traffic, see section 6).
+`check-config`; only the `/dev/tcp` signature, `kill.regex[5]`, met a constructed request, a loopback web-shell request in the
+lab; the others never ran against a payload or live traffic, see section 6).

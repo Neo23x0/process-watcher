@@ -57,7 +57,7 @@ contain secrets ([Argument capture](#argument-capture)). Prefer a file? Edit `pr
 ```bash
 sudo tail -f process-watcher.jsonl | jq -r '
   select(.event_type=="process.exec" and .lineage.role=="descendant")
-  | "\(.timestamp[:19])Z  \(.root.image) > \(.process.image)  \(.process.argv // [] | join(" "))"'
+  | "\(.timestamp[:19])Z  \(.root.image) > \(.process.image)  \(.process.argv // [] | join(" "))" | gsub("[[:cntrl:]]"; "?")'
 ```
 
 Example: a service called `nginx` is made to run a shell and a few programs (simulated with a stand-in program):

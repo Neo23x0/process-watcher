@@ -552,6 +552,7 @@
         "signal": { "const": "SIGKILL" },
         "dry_run": { "type": "boolean" },
         "exec_index": { "description": "0 for a snapshot or a fork before the first observed exec.", "type": "integer", "minimum": 0 },
+        "summary": { "description": "One sentence for people reading the log: what was decided or done, to which process, who started it and which rules matched. The other fields carry the same facts; the sentence holds no arguments. Written since v0.2.2, so older logs do not have it.", "type": "string", "minLength": 1 },
         "rules": { "type": "array", "items": { "$ref": "#/$defs/rule_hit" }, "minItems": 1 },
         "outcome": { "enum": ["pending", "dry_run", "signal_sent", "already_exited", "permission_denied", "skipped", "error"] },
         "reason": {

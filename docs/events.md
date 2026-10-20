@@ -86,7 +86,7 @@ Example (a shell descendant of an NGINX root with argument capture enabled, stor
 The shell was called as `sh`, the program that actually ran is `dash`. The contract adds `process.argv_state`,
 `process.argv_complete`, `process.argv_capture`, `parent.image_path`, `data_quality.sanitized_fields` and
 `details.exec_filename`, `previous_image` and `thread_exec` as **additive** fields; kill audit events add
-`details.chain`.
+`details.chain` and, since v0.2.2, `details.summary` (one sentence for people; the schema has it as optional).
 
 ## Exclusions
 
