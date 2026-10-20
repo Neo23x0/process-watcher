@@ -167,7 +167,7 @@ func TestLoadPHPExamples(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) < 6 {
+	if len(entries) < 2 {
 		t.Fatalf("expected the shipped PHP examples, found %d", len(entries))
 	}
 	prev := ""

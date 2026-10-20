@@ -42,6 +42,13 @@ nginx-fpm)
 	sleep 1; stop_agent > /dev/null
 	check D1.11 "an nginx-only watch sees nothing of what PHP started" "$(count '.event_type=="process.exec" and (.process.image=="dash" or .process.image=="uname")')" 0
 	check D1.12 "it only knows the nginx processes" "$(count '.event_type=="process.discovered" and .process.image!="nginx"')" 0
+
+	info "agent runs the shipped php-observe.yaml"
+	start_agent --config /dist/php-observe.yaml
+	curl_php "$(url shell)" > /dev/null; curl_php "$(url phpr)" > /dev/null
+	sleep 1; stop_agent > /dev/null
+	check D1.13 "the shell is observed below the FPM master" "$(first '.event_type=="process.exec" and .process.image=="dash" and (.process.argv==["sh","-c","--","uname -s"])' '[.lineage.role, .root.pid, .root.image]|join(" ")')" "descendant $M php-fpm8.4"
+	check D1.14 "a PHP CLI started by a worker stays a descendant of the master" "$(first '.event_type=="process.exec" and .process.image=="php8.4"' '[.lineage.role, .root.pid]|join(" ")')" "descendant $M"
 	;;
 
 apache-fpm)
@@ -59,6 +66,13 @@ apache-fpm)
 	sleep 1; stop_agent > /dev/null
 	check D2.2 "a php-fpm watch sees the shell" "$(count '.event_type=="process.exec" and .process.image=="dash"')" 1
 	check D2.3 "attributed to the FPM master" "$(first '.event_type=="process.exec" and .process.image=="dash"' ".root.pid")" "$M"
+
+	info "agent runs the shipped php-observe.yaml (Apache is a root as well, PHP runs in the FPM service)"
+	start_agent --config /dist/php-observe.yaml
+	curl_php "$(url81 shell)" > /dev/null
+	sleep 1; stop_agent > /dev/null
+	check D2.4 "the shell is observed below the FPM master" "$(first '.event_type=="process.exec" and .process.image=="dash"' '[.lineage.role, .root.pid, .root.image]|join(" ")')" "descendant $M php-fpm8.4"
+	check D2.5 "the Apache master is a root too" "$(count '.event_type=="process.discovered" and .lineage.role=="root" and .process.image=="apache2"')" 1
 	;;
 
 apache-modphp)
@@ -77,6 +91,10 @@ apache-modphp)
 	start_agent --watch-image-contains php --capture-argv=true
 	curl_php "$(url81 shell)" > /dev/null; sleep 1; stop_agent > /dev/null
 	check D3.6 "a php watch sees nothing of mod_php" "$(count '.event_type=="process.exec" and .process.image=="dash"')" 0
+	info "agent runs the shipped php-observe.yaml (its apache2 entry selects mod_php)"
+	start_agent --config /dist/php-observe.yaml
+	curl_php "$(url81 shell)" > /dev/null; sleep 1; stop_agent > /dev/null
+	check D3.7 "the shell is a descendant of the Apache master" "$(first '.event_type=="process.exec" and .process.image=="dash"' '[.root.pid, .root.image, .lineage.depth]|join(" ")')" "$M apache2 2"
 	;;
 
 nginx-phpcgi)
@@ -98,6 +116,10 @@ NG
 	start_agent --watch-image-contains nginx --capture-argv=true
 	curl_php "$(url shell)" > /dev/null; sleep 1; stop_agent > /dev/null
 	check D4.4 "an nginx-only watch misses php-cgi" "$(count '.event_type=="process.exec" and .process.image=="dash"')" 0
+	info "agent runs the shipped php-observe.yaml"
+	start_agent --config /dist/php-observe.yaml
+	curl_php "$(url shell)" > /dev/null; sleep 1; stop_agent > /dev/null
+	check D4.5 "the shell below a php-cgi child belongs to the daemon" "$(first '.event_type=="process.exec" and .process.image=="dash"' '[.root.pid, .lineage.depth]|join(" ")')" "$M 2"
 	;;
 
 apache-fcgid)
@@ -130,6 +152,10 @@ AP
 	start_agent --watch-image-contains php8.4 --capture-argv=true
 	curl_php "$(url81 shell)" > /dev/null; sleep 1; stop_agent > /dev/null
 	check D5.4 "a php8.4 watch roots the tree at the wrapper" "$(first '.event_type=="process.exec" and .process.image=="dash"' '[.root.image, .lineage.depth]|join(" ")')" "php8.4 1"
+	info "agent runs the shipped php-observe.yaml (apache2 roots the tree, the wrapper below it also matches php)"
+	start_agent --config /dist/php-observe.yaml
+	curl_php "$(url81 shell)" > /dev/null; sleep 1; stop_agent > /dev/null
+	check D5.5 "the shell is observed below the wrapper, rooted at Apache" "$(first '.event_type=="process.exec" and .process.image=="dash"' '[.root.image, .lineage.depth, .parent.image]|join(" ")')" "apache2 3 php8.4"
 	;;
 
 cli)
@@ -146,6 +172,14 @@ cli)
 	start_agent --watch-image-contains php --capture-argv=true
 	sleep 0.5; stop_agent > /dev/null
 	check D6.5 "php selects the FPM master as well" "$(first '.event_type=="process.discovered" and .lineage.role=="root"' '.process.image')" php-fpm8.4
+	info "agent runs the shipped php-observe.yaml while a CLI worker and an FPM request run side by side"
+	start_agent --config /dist/php-observe.yaml
+	setsid sh -c 'php /var/www/html/worker.php 2 100' > /dev/null 2>&1 &
+	curl_php "$(url shell)" > /dev/null
+	sleep 2; stop_agent > /dev/null
+	check D6.6 "the CLI worker is a root of its own" "$(first '.event_type=="process.exec" and .process.image=="php8.4" and .lineage.role=="root"' '[.process.argv[0],.process.argv[1]]|join(" ")')" "php /var/www/html/worker.php"
+	check D6.7 "the programs it starts are reported below it" "$(count '.event_type=="process.exec" and .lineage.role=="descendant" and .root.image=="php8.4" and .process.image=="true"')" 2
+	check D6.8 "the shell of the FPM request is reported below the FPM master" "$(first '.event_type=="process.exec" and .process.image=="dash" and .root.image=="php-fpm8.4"' '.lineage.role')" descendant
 	;;
 *) echo "unknown deployment $D"; exit 2 ;;
 esac

@@ -25,29 +25,24 @@ ls php/
 
 `php/` holds the ready-made configurations used below.
 
-## 2. Pick the configuration
+## 2. Check the configuration
 
-Watch **the process that runs PHP**, not the web server in front of it: a watch on `nginx` sees nothing that PHP starts.
-
-| PHP runs as | Configuration |
-| --- | --- |
-| PHP-FPM behind nginx or Apache | `php/php-fpm-observe.yaml` |
-| Apache with `mod_php` | `php/apache-mod-php.yaml` |
-| `php-cgi` or another FastCGI daemon | `php/php-cgi.yaml` |
-| PHP CLI (cron, queue workers) | `php/php-cli-workers.yaml` |
-
-Not sure which one applies? `ps -eo pid,ppid,user,comm,args --forest | grep -E 'php|apache2|httpd'` shows what executes
-PHP ([how to read it](guide.md#2-which-executable-to-watch)). Check the file without root:
+One file covers every way of running PHP: `php/php-observe.yaml` watches **the processes that run PHP** (PHP-FPM behind
+nginx or Apache, `php-cgi`, the PHP CLI of cron jobs and queue workers, Apache with `mod_php`), not the web server in
+front of PHP-FPM: a watch on `nginx` sees nothing that PHP starts. Check the file without root:
 
 ```bash
-./process-watcher check-config --config php/php-fpm-observe.yaml     # "configuration OK"
+./process-watcher check-config --config php/php-observe.yaml     # "configuration OK"
 ```
+
+It also reports every PHP CLI job and everything Apache starts. If that is more than you want, narrow
+`watch.image_contains` in the file ([which name belongs to which setup](guide.md#2-which-executable-to-watch)).
 
 ## 3. Start observing
 
 ```bash
 sudo ./process-watcher doctor                                  # kernel, BTF, permissions: every line [OK]
-sudo ./process-watcher --config php/php-fpm-observe.yaml       # stop with Ctrl-C
+sudo ./process-watcher --config php/php-observe.yaml           # stop with Ctrl-C
 ```
 
 Events go to `/var/log/process-watcher/events.jsonl` (the agent creates the directory, readable by root only). Command
@@ -93,16 +88,18 @@ Send the events to your SIEM or log pipeline with `--tcp-address` or `--webhook-
 ## 5. Optional: let it react (dry run first)
 
 The response rules send `SIGKILL` to shells, Python, Perl, Ruby, PHP CLI, netcat, socat and telnet that a PHP worker
-starts. A reverse or bind shell written in one of those languages, or built with those tools, has to run as one of these
-programs, however its code looks. The PHP-FPM master is never a target and its workers are spared: the rules apply to
-what they start.
+starts, and to any program whose command line matches one of the reverse- and bind-shell signatures in the same file. A
+reverse or bind shell written in one of those languages, or built with those tools, has to run as one of these programs,
+however its code looks; the signatures are a second layer for known payloads and catch reuse, not adaptation
+([what each layer misses](guide.md#6-response-rules)). The PHP-FPM master is never a target and its workers are spared:
+the rules apply to what they start.
 
 **Read this first:** PHP routes `shell_exec()`, `system()`, `exec()`, `passthru()`, `popen()` and the `sendmail` call of
 `mail()` through a shell, and the rules name shells. An application that uses them **will lose those calls**. So start
-with the dry run: it logs every decision and sends no signal.
+with the dry run: the file ships as one (`dry_run: true`), logs every decision and sends no signal.
 
 ```bash
-sudo ./process-watcher --config php/php-fpm-dry-run.yaml
+sudo ./process-watcher --config php/php-fpm-kill-signatures.yaml
 ```
 
 ```bash
@@ -117,11 +114,11 @@ sudo tail -f /var/log/process-watcher/events.jsonl | jq -r '
 ```
 
 Every `dry_run` line is a program that would have been killed. Let it see your real traffic first, a day if you can. If
-the list holds only what you do not want, switch to real termination; if your application legitimately needs shells,
-narrow the first rule instead ([php.md, section 6](guide.md#6-response-rules)).
+the list holds only what you do not want, switch to real termination with the same file; if your application
+legitimately needs shells, narrow the first rule instead ([guide.md, section 6](guide.md#6-response-rules)).
 
 ```bash
-sudo ./process-watcher --config php/php-fpm-kill.yaml
+sudo ./process-watcher --config php/php-fpm-kill-signatures.yaml --kill-dry-run=false
 ```
 
 The same filter now shows `signal_sent`; the matching `process.exit` with signal 9 confirms the death:
@@ -137,10 +134,12 @@ sudo tail -f /var/log/process-watcher/events.jsonl | jq -r '
   and all 200 long-running helpers (the shape of a shell that stays open).
 - **Names differ by distribution.** The list has the names found on Debian 13 and Rocky 9 (`nc.openbsd`, `socat1`,
   `inetutils-telnet`, `ncat`, `ruby3.3`, ...). Check yours; on Alpine every applet is `busybox`
-  ([php.md](guide.md#6-response-rules)).
-- **Only PHP-FPM ships response rules.** For other setups, copy the `kill:` block of `php/php-fpm-dry-run.yaml` into your
-  observe file and run `check-config` on the result.
-- **Your own command-line signatures** go into `php/php-fpm-kill-signatures.yaml` (placeholders; no patterns are shipped).
+  ([guide.md](guide.md#6-response-rules)).
+- **Only PHP-FPM ships response rules.** For another setup, copy `php/php-observe.yaml`, narrow its
+  `watch.image_contains` to the process that runs PHP (rules apply to everything below every watched process, CLI jobs
+  included), add the `kill:` block of `php/php-fpm-kill-signatures.yaml` and run `check-config` on the result.
+- **Add your own command-line signatures** in `php/php-fpm-kill-signatures.yaml` next to the shipped ones, following
+  the reasoning and the format documented in the file itself.
 
 ## What it cannot do
 
@@ -152,11 +151,13 @@ sudo tail -f /var/log/process-watcher/events.jsonl | jq -r '
 - **A burst can overflow the kernel buffer.** Losses are counted (`agent.health`) and reported (`agent.gap`); the agent
   takes no action on a lineage it cannot confirm.
 
-More: [php.md](guide.md) (every deployment, argument limits, measurements, what was and was not verified),
+More: [guide.md](guide.md) (every deployment, argument limits, measurements, what was and was not verified),
 [kill-rules.md](../../docs/kill-rules.md), [events.md](../../docs/events.md).
 
-*Tested from an unpacked release archive built from the sources, against nginx 1.26 and PHP 8.4-FPM on Debian 13 (kernel
-6.12, arm64): `doctor`, `check-config`, the observe, dry-run and kill configurations, every `jq` filter above, and that
-`mail()` starts its command through a shell (the download lines are the README's). Not run with these commands: amd64,
-other distributions and PHP versions, Apache `mod_php` ([php.md](guide.md#9-verified-and-not-verified) says what was
-checked elsewhere).*
+*Tested against nginx 1.26 and PHP 8.4 on Debian 13 (kernel 6.12, arm64). From an unpacked release archive built from the
+sources: `doctor`, `check-config`, the image-identity response rules as a dry run and as real termination, and that
+`mail()` starts its command through a shell. In the PHP lab with the real agent: `php/php-observe.yaml` on PHP-FPM behind
+nginx and behind Apache, `mod_php`, `php-cgi`, `mod_fcgid` and a CLI worker next to FPM, and both observe `jq` filters
+on those events. Not run with these commands: the download lines, the command-line signatures (validated with
+`check-config` only), amd64, other distributions and PHP versions
+([guide.md](guide.md#9-verified-and-not-verified) says what was checked elsewhere).*

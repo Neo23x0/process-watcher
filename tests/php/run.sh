@@ -17,6 +17,7 @@ ALL="deployments:nginx-fpm deployments:apache-fpm deployments:apache-modphp depl
 SELECT=${*:-$ALL}
 
 mkdir -p dist/php/out
+cp emerging-threats/php-rce-october-26/configs/php-observe.yaml dist/php/php-observe.yaml || exit 1
 echo "building the agent for linux/$ARCH"
 GOOS=linux GOARCH="$ARCH" CGO_ENABLED=0 go build -trimpath -buildvcs=false -o dist/php/process-watcher ./cmd/process-watcher || exit 1
 if ! docker image inspect "$IMAGE" > /dev/null 2>&1; then

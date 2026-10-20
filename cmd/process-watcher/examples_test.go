@@ -57,7 +57,7 @@ func TestShippedConfigurationsAreValid(t *testing.T) {
 		}
 		files = append(files, m...)
 	}
-	if len(files) < 11 {
+	if len(files) < 7 {
 		t.Fatalf("expected the example files, found %v", files)
 	}
 	ca := writeTestCA(t, t.TempDir())

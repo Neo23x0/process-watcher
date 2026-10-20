@@ -13,6 +13,7 @@ condensed [quick start](README.md) takes you from download to a log of what PHP 
 
 1. **Watch the process that runs PHP, not the web server** (section 2): `php-fpm` for NGINX or Apache with PHP-FPM,
    `apache2`/`httpd` for mod_php. Watching `nginx` or `apache2` in front of PHP-FPM sees nothing PHP starts.
+   [php-observe.yaml](configs/php-observe.yaml) watches every runtime at once (`php`, `apache2`, `httpd`): start there.
 2. **Capture arguments and raise the limits**: `capture.argv: true`, `argv_max_bytes: 16383`, `argv_max_args: 64`
    (section 4). With the defaults, a shell command longer than 4,086 bytes disappears from `argv`.
 3. **Observe first, then dry-run, then (maybe) kill** (section 6). Never write a response rule that matches the service's
@@ -42,8 +43,10 @@ the service name (`php8.4-fpm.service`), not the process title shown by `ps` (`p
 
 Notes that decide whether a watch works:
 
-- **`php` is not a safe universal substring.** It selects FPM, CGI and CLI binaries alike. `php8.` selects the versioned CLI
-  and the versioned CGI wrapper but not `php-fpm8.4`. `php-fpm` selects every FPM version and pool.
+- **`php` selects every PHP binary at once**: FPM, CGI and CLI alike, which is why `php-observe.yaml` uses it to observe
+  every setup with one file. `php8.` selects only the versioned CLI and the versioned CGI wrapper (Debian naming), not
+  `php-fpm8.4`; `php-fpm` selects every FPM version and pool. Observation can take the broad name, a response file cannot
+  (section 6).
 - **Several PHP versions and pools**: one FPM master per version (all matched by `php-fpm`); pools are only worker titles
   of one master. A second master is a second root.
 - **Alpine**: every busybox applet runs as image `busybox` (path `/bin/busybox`; verified for `sh`, `uname` and `id`), so
@@ -83,15 +86,14 @@ jq -r 'select(.event_type=="process.discovered" and .lineage.role=="root") | "\(
 
 | Deployment | File | One-line equivalent (add `--log-file /var/log/process-watcher/events.jsonl`) |
 | --- | --- | --- |
-| PHP-FPM behind NGINX or Apache | [php-fpm-observe.yaml](configs/php-fpm-observe.yaml) | `--watch-image-contains php-fpm --capture-argv=true --capture-argv-max-bytes 16383 --capture-argv-max-args 64` |
-| Apache with mod_php | [apache-mod-php.yaml](configs/apache-mod-php.yaml) | `--watch-image-contains apache2 --watch-image-contains httpd --capture-argv=true --capture-argv-max-bytes 16383 --capture-argv-max-args 64` |
-| php-cgi, FastCGI daemon | [php-cgi.yaml](configs/php-cgi.yaml) | `--watch-image-contains php-cgi --capture-argv=true ...` |
-| PHP CLI workers | [php-cli-workers.yaml](configs/php-cli-workers.yaml) | `--watch-image-contains php8. --capture-argv=true ...` |
-| FPM, response rules as a dry run | [php-fpm-dry-run.yaml](configs/php-fpm-dry-run.yaml) | the observe line plus `--kill-enabled=true --kill-dry-run=true --kill-spare-root-image=true --kill-field image --kill-regex '^(sh\|dash\|bash\|zsh\|ksh\|ash)$' --kill-regex '^python[0-9.]*$' --kill-regex '^(perl\|ruby[0-9.]*)$' --kill-regex '^(nc\|nc\.openbsd\|nc\.traditional\|ncat\|socat[0-9]*\|telnet\|inetutils-telnet)$' --kill-regex '^php[0-9.]*$'` |
-| FPM, real termination | [php-fpm-kill.yaml](configs/php-fpm-kill.yaml) | the same with `--kill-dry-run=false` |
-| FPM, kill rules plus your own argv signatures | [php-fpm-kill-signatures.yaml](configs/php-fpm-kill-signatures.yaml) | the same image-identity rules, with placeholder entries to fill in (section 6) |
+| Any PHP runtime: FPM, php-cgi, CLI, mod_php (observation only) | [php-observe.yaml](configs/php-observe.yaml) | `--watch-image-contains php --watch-image-contains apache2 --watch-image-contains httpd --capture-argv=true --capture-argv-max-bytes 16383 --capture-argv-max-args 64` |
+| FPM, response rules (dry run by default) | [php-fpm-kill-signatures.yaml](configs/php-fpm-kill-signatures.yaml) | image identity as flags: `--watch-image-contains php-fpm --capture-argv=true --capture-argv-max-bytes 16383 --capture-argv-max-args 64` plus `--kill-enabled=true --kill-dry-run=true --kill-spare-root-image=true --kill-field image --kill-regex '^(sh\|dash\|bash\|zsh\|ksh\|ash)$' --kill-regex '^python[0-9.]*$' --kill-regex '^(perl\|ruby[0-9.]*)$' --kill-regex '^(nc\|nc\.openbsd\|nc\.traditional\|ncat\|socat[0-9]*\|telnet\|inetutils-telnet)$' --kill-regex '^php[0-9.]*$'`; the file adds `argv` to the fields and the command-line signatures (section 6) |
 
-What each covers and misses is in the tables of sections 2 and 5. No single pattern is right for every host.
+What each covers and misses is in the tables of sections 2 and 5. `php-observe.yaml` also reports every PHP CLI job and
+everything Apache starts; narrow its `watch.image_contains` (the names are in section 2) when that is more than you need.
+The response file watches `php-fpm` only, on purpose (section 6). `--kill-dry-run=false` on it ends the dry run;
+`--kill-field image` runs only the image-identity rules (its signature entries are then compared with the executable's
+file name only).
 
 ## 4. Command-line evidence
 
@@ -194,7 +196,7 @@ earlier events are not at hand.
 | worker forks, the child keeps running PHP | fork with the inherited image, later exit, no exec | only the inherited image | none that is safe: a rule that matches it also matches legitimate workers | everything the child does |
 | code inside the worker (socket, file, database, `eval`) | **nothing** | - | none | complete: PHP opens connections itself (`fsockopen`); verified with a worker that held a connection to a loopback listener for 3 seconds: the OS shows it (`ss -tnp`), the agent logged no process event |
 | request body, URL, identity of the request | nothing | - | - | FastCGI parameters are not process arguments |
-| PHP CLI or queue worker | a root of its own; its children as descendants | watch `php8.` | the root is never a target | |
+| PHP CLI or queue worker | a root of its own; its children as descendants | watch `php8.` (Debian naming) or `php` (`php-observe.yaml`) | the root is never a target | |
 | remote FastCGI backend, containerized PHP | only on the host that runs the process | - | - | the agent must run there |
 
 Exec arguments do not reveal what is supplied **later** (stdin, files, network, a running interpreter) or the PHP source
@@ -207,6 +209,11 @@ The feature is off by default, has a dry run, writes the decision (`response.kil
 pidfd for the exact process instance and verifies its kernel start time (a reused PID is never signalled), re-checks the
 match right before the signal, and never targets the root, PID 1 or the agent.
 
+**Keep the watch of a response file narrow.** A rule applies to everything below every watched root. `php-observe.yaml`
+also watches the PHP CLI and Apache, which is right for observation and wrong for a kill rule: the shell that a cron
+job's `php` starts would be killed like one started by a web request. The response file watches `php-fpm` only; for
+another setup, narrow the watch to the process that runs PHP before adding a `kill:` block.
+
 **The failure mode of a broad rule (measured, real PHP-FPM behind nginx)**: with watch `php-fpm` and the rule `php` the
 workers match as they are forked (the master forks with its own image) and the ones that already exist match at start.
 Within 3 seconds the agent sent 9,501 signals (8,206 in a second run); five or six of six HTTP requests answered 502;
@@ -216,24 +223,28 @@ is never killed** (the decision is audited as `skipped` / `root_image_spared`, c
 a re-executed master after a reload; what a worker starts, and a worker that replaces itself with another program, is
 still judged by the rules.
 
-Recommended rules (see the examples): exact names of shells and interpreters, `fields: [image]`. Verified on the real
-service: a shell and a PHP CLI interpreter started by a worker were killed with SIGKILL and ended with signal 9; an
+Recommended rules (see [php-fpm-kill-signatures.yaml](configs/php-fpm-kill-signatures.yaml)): exact names of shells and
+interpreters on the `image` field. The file also selects `argv` for its command-line signatures, and fields apply to
+every rule, so its identity regexes are compared with each single argument too (`docs/kill-rules.md`, "Matching"; read,
+not run); `--kill-field image` restricts it to the executable's file name. Verified on the real service with the `image`
+field only: a shell and a PHP CLI interpreter started by a worker were killed with SIGKILL and ended with signal 9; an
 ordinary program started the same way and all workers were untouched. By construction this already covers every
 reverse or bind shell written in these interpreters, whatever its source code: it has to execute as one of them.
 
-[php-fpm-kill-signatures.yaml](configs/php-fpm-kill-signatures.yaml) adds an optional second layer, matching
-your own command-line signatures against `argv` (field: `argv`, requires `capture.argv: true`). process-watcher ships
-no such patterns itself: a literal match is brittle (renamed variables, a different encoding, an added `eval` defeat
-it; this layer catches reuse of a known payload, not adaptation) and shares the `argv` blind spots below (code read
-from stdin, a file or assembled at runtime is invisible, and a cut argument never matches). The file has placeholder
-entries and the reasoning in full; fill in your own patterns, validate with `check-config`, and review a dry run
-before switching it on.
+[php-fpm-kill-signatures.yaml](configs/php-fpm-kill-signatures.yaml) adds a second, independent layer on top of the
+same image-identity rules, matching command-line signatures against `argv` (field: `argv`, requires
+`capture.argv: true`): a literal match is brittle by construction (renamed variables, a different encoding, an added
+`eval` defeat it; this layer catches reuse of a known payload, not adaptation) and shares the `argv` blind spots below
+(code read from stdin, a file or assembled at runtime is invisible, and a cut argument never matches). It ships with
+`dry_run: true` regardless of what the signature list contains: review `response.kill_requested`/`response.kill_result`
+in your own traffic before ever switching it to `dry_run: false`, and validate every change to the pattern list with
+`check-config`.
 
 | Pitfall | Reason |
 | --- | --- |
 | `sh` is a symlink | the image is `dash` (Debian, Ubuntu), `bash` (RHEL), `busybox` (Alpine, where it is also the image of `uname` and everything else) |
 | versioned interpreter names | Python runs as `python3.13`, PHP as `php8.4`: use `^python[0-9.]*$`, `^php[0-9.]*$` (the second does not match `php-fpm8.4`) |
-| `nc`, `socat`, `telnet` are rarely the literal name | distribution alternatives rewrite them. Verified with the real agent on Debian 13: `nc` execs as `nc.openbsd` or `nc.traditional`, `socat` as `socat1`, `telnet` as `inetutils-telnet`. Verified by executable path on Rocky 9: `nc` execs as `ncat`, `socat` and `telnet` keep their plain names. `ruby` is `ruby3.3` on Debian, `ruby` (unversioned) on Rocky. Not checked on Alpine (its `nc` is the `busybox` applet, already covered above). `configs/php-fpm-kill.yaml` lists the names found so far; discover more with the read-only commands of section 2 |
+| `nc`, `socat`, `telnet` are rarely the literal name | distribution alternatives rewrite them. Verified with the real agent on Debian 13: `nc` execs as `nc.openbsd` or `nc.traditional`, `socat` as `socat1`, `telnet` as `inetutils-telnet`. Verified by executable path on Rocky 9: `nc` execs as `ncat`, `socat` and `telnet` keep their plain names. `ruby` is `ruby3.3` on Debian, `ruby` (unversioned) on Rocky. Not checked on Alpine (its `nc` is the `busybox` applet, already covered above). `configs/php-fpm-kill-signatures.yaml` lists the names found so far; discover more with the read-only commands of section 2 |
 | false positives | PHP applications start mailers, image and PDF converters, `git`, `composer`; Python, Bash and PHP CLI are investigation signals, not proof |
 | argument rules (`fields: [argv]`) | only complete arguments are matched: an omitted argument cannot fire a rule, a cut one never matches |
 | exclusions | `exclude.*` only filter the reports; an excluded helper's later descendants are still observed and still subject to the rules |
@@ -257,7 +268,7 @@ Short-lived programs can finish, with their effects, before the signal arrives. 
 | What | Where | Run |
 | --- | --- | --- |
 | 23 integration tests with PHP-shaped topologies (service master, workers, replacement, reload, shells, direct launches, limits, response, transports) using harmless helper programs, `/bin/sh`, `/bin/true` | [tests/integration/php_test.go](../../tests/integration/php_test.go) | `make test-docker`, `make test-vm-e2e` |
-| the same shapes against the real nginx 1.26, Apache 2.4 and PHP 8.4 of Debian 13: 6 deployments, argument evidence, FPM lifecycle, response rules, blind spot, latency (15 runs, 108 checks) | [tests/php/](../../tests/php/) | `tests/php/run.sh` |
+| the same shapes against the real nginx 1.26, Apache 2.4 and PHP 8.4 of Debian 13: 6 deployments, argument evidence, FPM lifecycle, response rules, blind spot, latency (15 runs, 118 checks) | [tests/php/](../../tests/php/) | `tests/php/run.sh` |
 | executable names on other images (Ubuntu 24.04, Debian 12, Rocky 9, official php images, Alpine) | `tests/php/names-images.sh` | |
 | real-kernel tests of the capture limits, partial arguments and totals | `internal/collector/ebpf` | `make test-vm-matrix` |
 
@@ -327,9 +338,18 @@ the real agent against Debian 13 (`nc.openbsd`, `nc.traditional`, `socat1`, `ine
 directly under the agent's watch; the matching code path (`killrule.Match`) is the same one the PHP lab's `killrules`
 scenarios already exercise through real FPM workers.
 
+Verified (2026-10-20): the shipped `php-observe.yaml` (watch `php`, `apache2`, `httpd`) with the real agent on every
+deployment of the lab: PHP-FPM behind nginx and behind Apache, mod_php, `php-cgi`, mod_fcgid, and a CLI worker next to
+FPM. The shell below an FPM worker is a descendant of the FPM master; a PHP CLI started by a worker stays a descendant
+of the master and does not become a new root; the Apache master is a root as well; the mod_fcgid wrapper `php8.4` stays
+below the Apache root; the CLI worker is a root of its own with its helpers below it. Ten checks were added and the whole
+lab passed again (15 runs, 118 checks, kernel 6.12.54, arm64). The file was not run on Rocky, Alpine or the official php
+images: its entries match there by the executable names read earlier (`php`, `php-fpm`, `httpd`), not by a run.
+
 Not verified: any real vulnerability or exploit (none was used); PHP-FPM with the `chroot` pool option (a plain chroot was
 checked); `proc_open` with a command string; mailers and other legitimate helpers; FPM under heavy production load and
 the cost of the larger limits there; other kernels and distributions; real amd64 hardware (latency numbers are from
 the arm64 Docker VM only); other PHP versions than 8.4 in behavior; `nc`/`socat`/`telnet`/`ruby`/`perl` executable names
-on Alpine or any distribution other than Debian 13 and Rocky 9; any command-line signature for a specific shell payload
-(process-watcher ships none, see section 6).
+on Alpine or any distribution other than Debian 13 and Rocky 9; the command-line signatures of
+`php-fpm-kill-signatures.yaml` (written and committed by the maintainer, not generated here; validated with
+`check-config` only, never against a constructed payload or live traffic, see section 6).

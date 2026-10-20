@@ -1,0 +1,35 @@
+# PHP on any runtime, observation only: PHP-FPM behind nginx or Apache, php-cgi and other FastCGI daemons, the PHP
+# CLI (cron jobs, queue workers) and Apache with mod_php, all with one file.
+#
+# The three entries select the process that runs PHP. A watch on the web server in front of PHP-FPM sees nothing
+# that PHP starts, which is why nginx is not listed.
+#   php      every PHP executable: php-fpm8.4 (Debian, Ubuntu) or php-fpm (RHEL family, official images), php-cgi8.4
+#            or php-cgi, the CLI as php8.4 (Debian, Ubuntu) or php (RHEL family, official images), and the mod_fcgid
+#            wrapper php8.4. Several PHP versions and all pools are covered.
+#   apache2  Apache with mod_php on Debian and Ubuntu: there is no php executable, the web server is the PHP process.
+#   httpd    the same on RHEL, Rocky, Alma and Amazon Linux. It also matches lighttpd.
+# With a remote FastCGI backend, run the agent on the backend host.
+#
+# What it costs: every PHP CLI process is a root of its own and every program it starts is reported, and so is
+# everything Apache starts. Narrow the list when that is more than you want, for example to ["php-fpm"] on a host
+# where PHP runs only in PHP-FPM (emerging-threats/php-rce-october-26/guide.md, section 2, says which name belongs to
+# which setup).
+#
+# Do not add kill rules to this watch: they apply to what every listed root starts, CLI jobs included. The response
+# files next to this one watch php-fpm only.
+#
+# One-line equivalent:
+#   sudo process-watcher --watch-image-contains php --watch-image-contains apache2 --watch-image-contains httpd \
+#     --capture-argv=true --capture-argv-max-bytes 16383 --capture-argv-max-args 64
+config_version: 1
+watch:
+  image_contains: ["php", "apache2", "httpd"]
+
+capture:
+  argv: true                  # the command lines are the evidence: sh -c -- <command>, python3 -c <code>, ...
+  argv_max_bytes: 16383       # default 4096: a longer inline command is cut and reported as incomplete
+  argv_max_args: 64           # default 32
+
+outputs:
+  file:
+    path: /var/log/process-watcher/events.jsonl

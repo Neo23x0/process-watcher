@@ -67,7 +67,7 @@ func checkVersion(v string) error {
 }
 
 // entry is one file of an archive; a name with slashes lies in a subdirectory
-// (for example "php/php-fpm-dry-run.yaml").
+// (for example "php/php-observe.yaml").
 type entry struct {
 	name string
 	mode int64

@@ -91,7 +91,7 @@ gh attestation verify process-watcher_${VERSION}_linux_${ARCH}.tar.gz --repo Neo
 
 Every archive holds the **single static binary** (eBPF programs embedded; nothing else is needed at run time), the
 commented example configuration `process-watcher.yaml`, the `LICENSE`, and below `php/` the PHP deployment
-configurations of [emerging-threats/](emerging-threats/), usable right away (`process-watcher --config php/php-fpm-dry-run.yaml`).
+configurations of [emerging-threats/](emerging-threats/), usable right away (`process-watcher --config php/php-fpm-kill-signatures.yaml`, a dry run).
 Only `amd64` and `arm64` are provided: the eBPF collector assumes 64-bit kernel pointers, so 32-bit kernels (x86, ARM)
 are not supported.
 

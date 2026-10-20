@@ -1,10 +1,12 @@
-# PHP-FPM: the same response rules as php-fpm-kill.yaml, with a second, optional layer for your own
-# command-line signatures. Read php-fpm-kill.yaml and php-fpm-dry-run.yaml first.
+# PHP-FPM response rules: the image-identity rules below plus a second layer of command-line signatures that
+# you can extend with your own. It ships as a dry run: read the guide first
+# (emerging-threats/php-rce-october-26/guide.md, section 6).
 #
 # The rules below (image identity) already cover every reverse or bind shell written in these
 # interpreters, no matter what its source code says: such a shell has to execute as one of these
 # programs. Matching a specific command line in addition can still be useful as a second, independent
-# layer, for example against a known, unmodified payload. process-watcher ships no such patterns because:
+# layer, for example against a known, unmodified payload. The patterns further below are such a layer,
+# kept apart from the image-identity rules above; keep in mind:
 #
 #  - they are brittle by construction: renaming a variable, changing the encoding, or adding a layer of
 #    eval or base64 defeats a literal or near-literal match. This layer catches reuse, not adaptation.
@@ -17,7 +19,7 @@
 #    "Matching"): a bad pattern only adds false positives or false negatives of its own, it does not
 #    weaken the image-identity rules above it.
 #
-# Fill in your own patterns in the regex list below (uncomment, replace the placeholder). Each one is a
+# Add your own patterns to the regex list below alongside the shipped ones. Each one is a
 # Go RE2 regular expression tested against one argument at a time (field: argv), unanchored by default:
 # anchor with ^ and $ for the whole argument. Validate the YAML and every regex with:
 #
@@ -25,6 +27,9 @@
 #
 # then run with kill.dry_run: true (the default below) and review response.kill_requested /
 # response.kill_result in your own traffic before ever switching to dry_run: false.
+#
+# --kill-dry-run=false ends the dry run. To run only the image-identity rules, add --kill-field image: the
+# signature entries are then compared with the executable's file name only.
 config_version: 1
 watch:
   image_contains: ["php-fpm"]
@@ -39,7 +44,7 @@ kill:
   dry_run: true                # flip to false only after reviewing hits in your own traffic
   fields: ["image", "argv"]
   regex:
-    # --- Image identity (verified names; see php-fpm-kill.yaml) ---
+    # --- Image identity (names verified on Debian 13 and Rocky 9; guide section 6) ---
     - '^(sh|dash|bash|zsh|ksh|ash)$'
     - '^python[0-9.]*$'
     - '^(perl|ruby[0-9.]*)$'

@@ -18,7 +18,7 @@ prints `PW-PHP: PASS|FAIL|INFO ...` lines and exits with the number of failed ch
 
 | Scenario | Checks |
 | --- | --- |
-| `deployments:<name>` | `nginx-fpm`, `apache-fpm`, `apache-modphp`, `nginx-phpcgi`, `apache-fcgid`, `cli`: the real executable and the process tree of each deployment, which watch target sees what PHP starts and which does not |
+| `deployments:<name>` | `nginx-fpm`, `apache-fpm`, `apache-modphp`, `nginx-phpcgi`, `apache-fcgid`, `cli`: the real executable and the process tree of each deployment, which watch target sees what PHP starts and which does not, and that the shipped [php-observe.yaml](../../emerging-threats/php-rce-october-26/configs/php-observe.yaml) sees it in every one (`run.sh` copies it to `/dist`) |
 | `argv` | the shape of shell, Python, PHP and bash command lines started by PHP; the 4,086 byte boundary of `sh -c --`; code that starts near the end of the capture; more than 32 arguments; the raised limits |
 | `fpm-lifecycle` | workers that exist at start, two pools, worker replacement (`pm.max_requests`), a graceful reload (`USR2`) |
 | `killrules:<mode>` | `narrow`, `guard`, `broad`, `dry`, `root`: response rules against a real FPM service, including the failure of a broad rule |
