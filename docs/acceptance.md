@@ -147,12 +147,11 @@ against a constructed payload.
 | Workflows `ci.yml` and `release.yml` | `actionlint` 1.7.12 | no findings. The commands of both were run locally before the first run on GitHub |
 | CI workflow (`ci.yml`), first run on `main` | GitHub-hosted runners `ubuntu-24.04` and `ubuntu-24.04-arm`, kernel `6.17.0-1022-azure` (BTF present, lockdown `none`), the privileged tests run directly on the runner through `sudo` | Vet and unit tests with the race detector, the release dry run, the workflow lint and the reproducibility of the embedded eBPF object passed. `tools/ci/kernel-tests.sh` on amd64 and on arm64: 97 passed, 1 failed, 2 skipped (lockdown test, measurement test) each. The one failure was `TestWithoutPrivilegesTheAgentRefusesWithExitCode3`: the unprivileged test user could not reach the agent binary below `/home/runner`. The test now starts a copy from its own world-accessible directory (checked locally by putting the agent into a directory only root can enter); the next run (commit e805063) passed all five jobs, including both kernel jobs |
 | Release workflow (`release.yml`), tag `v0.1.0` on commit e805063 | GitHub Actions | passed: verification of the tag, build of both archives, smoke tests of the shipped archives on amd64 and arm64, publication. Afterwards downloaded: `SHA256SUMS` matches both archives; `gh attestation verify` accepts the build provenance (SLSA v1, workflow `release.yml`, ref `refs/tags/v0.1.0`; one statement lists both archives); `--version` and `check-config` run from each published archive in a bare `debian:trixie-slim` container (arm64 native, amd64 emulated) |
+| CI workflow (`ci.yml`) on the pushes after v0.1.0 (2026-10-19 and 2026-10-20) | GitHub-hosted runners (`ubuntu-24.04`, `ubuntu-24.04-arm`) | the runs for bcf4957, cbbed9c, 94c638d (39271823990, 39283818368, 39339109258), aa49936 (39486625239), f24eb7a (39488804287) and d81e429 (39490195874) concluded `success`; for the last three all five jobs were read: kernel tests on amd64 and on arm64, vet and unit tests with the release build, the reproducibility of the eBPF object, the workflow lint. The kernel version of these runs was not read |
+| Release workflow (`release.yml`), tag `v0.2.0` on d81e429, without an rc rehearsal (2026-10-20) | GitHub Actions; afterwards this Mac (the `latest` redirect, `gh`, `curl`, `tar`) | run 39490861618 passed: verification of the tag, build of the four archives, both smoke jobs (the unpack-and-check step and the install-the-unit step) on the amd64 and the arm64 runner, publication as the latest release (assets: four archives and `SHA256SUMS`). The agent code of the release is the code of the PHP lab run (no non-test Go file under `cmd/` or `internal/` differs between aa49936 and d81e429). Afterwards: the first step of the PHP quick start, run verbatim in a clean directory against the published release, resolves `latest` to v0.2.0, the checksum matches and `php/` lists `php-fpm-kill-signatures.yaml` and `php-observe.yaml`; the checksum of the amd64 archive matches and the archive holds `packaging/` and `php/`; `gh attestation verify` accepts it (exit status 0); `releases/latest/download/process-watcher_linux_amd64.tar.gz` and `..._arm64.tar.gz` answer HTTP 200. Not run: steps 2 to 5 of the quick start with the agent from the published archive on a real host or in a container (the Docker engine did not answer; the smoke jobs ran `check-config` on both shipped files from the archives of that run), the attestation of an unversioned archive |
 | Reproducibility of the embedded eBPF object | `make generate` on an arm64 host and under amd64 emulation | the same object byte for byte (`839e331c…`), which is what the CI job checks on amd64 runners |
 
 **Open and not executed**
-- **CI and release for the changes after v0.1.0:** `ci.yml` and `release.yml` have run on GitHub for the code of
-  v0.1.0 (see the runs above). The argument-limit, kill-guard and PHP changes came after that tag and have not been
-  through either workflow; a `-rc` tag rehearses the release workflow without publishing a final release.
 - A kernel without BTF, kernels of other vendors, kernels other than those listed in
   [compatibility.md](compatibility.md) and real amd64 hardware.
 - **systemd:** the full test ran only on version 249 (Ubuntu 22.04). On 255 (Ubuntu 24.04, in a container) only the
@@ -163,9 +162,11 @@ against a constructed payload.
   build provenance attestation verified, and `--version` and `check-config` run from them in bare Debian containers
   (arm64 native, amd64 emulated); the agent from a published archive was not started on a bare-metal or virtual
   machine.
-- **The release layout with `packaging/`, `php/` and the unversioned archives:** it has not run on GitHub. The smoke steps ran in a local systemd 255
-  container, not on a runner (a `-rc` tag rehearses them), and neither the attestation over four archives nor `gh attestation verify` for an unversioned
-  archive has been tried. `install.sh` and the unit are the files the full systemd test ran (unchanged since the first commit); the packaged
-  configuration differs from the tested one only in a comment. Until a release made this way exists, `releases/latest/download/process-watcher_linux_<arch>.tar.gz`
-  answers 404 (checked on 2026-10-19: the redirect leads to `releases/download/v0.1.0/process-watcher_linux_<arch>.tar.gz`, which does not exist, and
-  v0.1.0 is the only tag), so the README looks up the latest tag instead of using that URL.
+- **The release layout with `packaging/`, `php/` and the unversioned archives, on real hosts:** the release workflow
+  ran it on GitHub's runners (see the row above) and `gh attestation verify` accepted the versioned amd64 archive; the
+  attestation of an unversioned archive was not tried, and the agent from a published v0.2.0 archive was not started on a
+  machine (steps 3 to 5 of the PHP quick start ran in the lab with an agent built from the same code). `install.sh` and
+  the unit are the files the full systemd test ran (unchanged since the first commit); the packaged configuration
+  differs from the tested one only in a comment. `releases/latest/download/process-watcher_linux_<arch>.tar.gz` answers
+  HTTP 200 since the release of v0.2.0 (on 2026-10-19 it answered 404); the READMEs still look up the latest tag, which
+  works as well.

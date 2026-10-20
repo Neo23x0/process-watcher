@@ -11,8 +11,8 @@ As of 2026-10-17. Everything below was actually executed; what was not executed 
   silently falls back to polling.
 - The collector test suite (tests against the real kernel, no mocks) passes completely on **Linux 5.15, 6.8 and
   6.12**, each on **arm64 and amd64**. The **6.17 Azure kernel of the GitHub-hosted runners** (amd64 and arm64) ran the
-  suite of release v0.1.0; the later changes to the argument capture have not run there yet (see
-  [acceptance.md](acceptance.md)). The kernels are unmodified distribution kernels.
+  suite of release v0.1.0; those runners also ran the later changes up to release v0.2.0 on 2026-10-20 (the kernel of
+  those runs was not read; see [acceptance.md](acceptance.md)). The kernels are unmodified distribution kernels.
 - The systemd unit (`packaging/systemd/process-watcher.service`) passed its complete test (140 checks) under a real
   **systemd 249** as PID 1 on the same six kernel/architecture combinations; see [acceptance.md](acceptance.md). Other
   systemd versions were not tested.

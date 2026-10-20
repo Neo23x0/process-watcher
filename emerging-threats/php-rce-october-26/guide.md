@@ -328,8 +328,7 @@ Verified (2026-10-17): the real nginx 1.26.3, Apache 2.4.69 and PHP 8.4.26 of De
 arm64, native CPU), all 15 lab runs (108 checks) without a failing check; the 23 PHP integration tests as part of the
 77-test end-to-end suite on the same kernel and in QEMU guests (Ubuntu 5.15 and 6.8, Debian 6.12, arm64 and amd64); the
 26 collector tests on those six combinations. Executable names only (no behavior tests) on Ubuntu 24.04, Debian 12,
-Rocky 9 and the official php images. The GitHub-hosted runners (kernel 6.17) have not run these changes: the code of
-release v0.1.0 passed there, the changes of this guide came after it.
+Rocky 9 and the official php images. The GitHub-hosted runners ran these changes later (2026-10-20, see below).
 
 Verified (2026-10-18): the executable names of `nc`, `socat`, `telnet`, `perl`, `ruby`, `python3`, `bash` and `sh` with
 the real agent against Debian 13 (`nc.openbsd`, `nc.traditional`, `socat1`, `inetutils-telnet`, `perl`, `ruby3.3`,
@@ -345,6 +344,14 @@ of the master and does not become a new root; the Apache master is a root as wel
 below the Apache root; the CLI worker is a root of its own with its helpers below it. Ten checks were added and the whole
 lab passed again (15 runs, 118 checks, kernel 6.12.54, arm64). The file was not run on Rocky, Alpine or the official php
 images: its entries match there by the executable names read earlier (`php`, `php-fpm`, `httpd`), not by a run.
+
+Verified (2026-10-20, release): the changes of this guide went through both GitHub workflows: CI on every push (kernel
+tests on amd64 and arm64 included) and the release workflow for v0.2.0 (both smoke jobs on the amd64 and the arm64
+runner: the file list and modes of the archives, `check-config` of both kit files, the unit installed on a systemd
+host). The agent code of the release is the code of the lab run above. The quick start's download step, run verbatim
+against the published release, ends with `php/` listing `php-fpm-kill-signatures.yaml` and `php-observe.yaml`, and the
+build provenance of the amd64 archive verifies. Not run: steps 3 to 5 of the quick start with the agent from the
+published archive on a real host (the lab ran them with an agent built from the same code).
 
 Not verified: any real vulnerability or exploit (none was used); PHP-FPM with the `chroot` pool option (a plain chroot was
 checked); `proc_open` with a command string; mailers and other legitimate helpers; FPM under heavy production load and
