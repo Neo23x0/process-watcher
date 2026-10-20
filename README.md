@@ -341,7 +341,8 @@ observed roots (all generations), never to a root, PID 1 or the agent; there is 
 directly to a `SIGKILL` attempt (no grace period) on exactly that process instance including its threads, not on its
 descendants or process group. Children that already exist at start or are found later (`process.discovered`) are
 checked too, so they can be killed as well. `kill.dry_run: true` evaluates and audits the same way but sends no
-signal.
+signal. The console says at start whether the rules are in dry run or live and prints one `kill decision` line per
+decision (no arguments; the log file has the whole event).
 
 ```yaml
 kill:

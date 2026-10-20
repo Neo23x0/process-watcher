@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 
 	"github.com/Neo23x0/process-watcher/internal/config"
@@ -41,6 +42,10 @@ type Sink struct {
 	exclRemote uint64
 	exclAll    uint64
 	suppressed []string // names of the enabled remote outputs
+
+	// log, when set before the first event, gets one console line per finished
+	// kill decision. It is written outside the lock.
+	log *slog.Logger
 }
 
 // NewSink creates the sink. scope is exclude.scope.
@@ -52,9 +57,21 @@ func NewSink(file logFile, remotes []output.Remote, scope string) *Sink {
 	return s
 }
 
+// SetLog makes the sink print a console line for every finished kill decision.
+// Call it before the first event.
+func (s *Sink) SetLog(l *slog.Logger) { s.log = l }
+
 // Emit implements proctree.Emitter and response.Emitter. A returned error is
 // fatal: the local log is mandatory.
 func (s *Sink) Emit(ev *event.Event) error {
+	err := s.emit(ev)
+	if err == nil && s.log != nil && ev.EventType == event.TypeKillResult {
+		killDecisionNotice(s.log, ev)
+	}
+	return err
+}
+
+func (s *Sink) emit(ev *event.Event) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.fatal != nil {

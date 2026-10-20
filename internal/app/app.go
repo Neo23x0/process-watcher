@@ -238,6 +238,7 @@ func (a *App) run(ctx context.Context) (code int, err error) {
 	defer col.Close()
 
 	a.sink = NewSink(file, remotes, cfg.Exclude.Scope)
+	a.sink.SetLog(a.log)
 	a.factory = &event.Factory{
 		AgentInstanceID: a.runI,
 		Host:            event.Host{Hostname: host, BootID: bootID},
@@ -372,7 +373,9 @@ func (a *App) operate(ctx context.Context) (string, error) {
 	}
 	debug.FreeOSMemory() // startup allocated the kernel BTF and the snapshot
 	a.log.Info("observing", "watch", a.cfg.Watch.ImageContains, "kernel", a.col.Info().Kernel,
-		"discovered_roots", res.Roots, "discovered_descendants", res.Descendants)
+		"discovered_roots", res.Roots, "discovered_descendants", res.Descendants,
+		"events", eventsPath(a.cfg.Outputs.File.Path))
+	killModeNotice(a.log, a.cfg.Kill)
 
 	now := time.Now()
 	a.nextStats = now.Add(statsInterval)

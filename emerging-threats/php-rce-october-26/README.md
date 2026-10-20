@@ -96,7 +96,9 @@ the rules apply to what they start.
 
 **Read this first:** PHP routes `shell_exec()`, `system()`, `exec()`, `passthru()`, `popen()` and the `sendmail` call of
 `mail()` through a shell, and the rules name shells. An application that uses them **will lose those calls**. So start
-with the dry run: the file ships as one (`dry_run: true`), logs every decision and sends no signal.
+with the dry run: the file ships as one (`dry_run: true`), logs every decision and sends no signal. The console says
+so at start and prints one `kill decision` line per decision (outcome, program, PID, the rules that matched, no
+arguments); the log file holds the full events.
 
 ```bash
 sudo ./process-watcher --config php/php-fpm-kill-signatures.yaml

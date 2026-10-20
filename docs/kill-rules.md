@@ -14,7 +14,9 @@ process instance including its threads, not on descendants or the process group 
 Further descendants are judged by their own rules and stay observed after their parent ended. **Children that already
 exist at start** (`process.discovered`) and those found by a later reconciliation are checked as well: with the
 feature enabled, children that exist when the agent starts can therefore be killed. `kill.dry_run: true` performs the
-same evaluation and audit logging but sends no signal (and opens no pidfd).
+same evaluation and audit logging but sends no signal (and opens no pidfd). The console says at start whether the
+rules are in dry run or live and prints one `kill decision` line per finished decision (outcome, program, PID, the
+matching rules, no arguments); the log file holds the full events.
 
 ```yaml
 kill:
