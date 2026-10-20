@@ -2,7 +2,7 @@
 
 Observes the process trees of programs whose executable name contains a configured substring (eBPF, Linux 5.15 or newer with BTF) and logs process creation, exec and exit as JSONL.
 
-**What is in a release.** One archive per architecture, `linux/amd64` and `linux/arm64`. Each contains `process-watcher` (a single static binary; the eBPF programs are embedded, nothing else is needed at run time), `process-watcher.yaml` (the documented example configuration), `LICENSE`, and below `php/` the PHP deployment configurations (observe, dry-run and kill variants for PHP-FPM, Apache mod_php, php-cgi and PHP CLI), usable right after unpacking; the [PHP kit](https://github.com/@REPO@/tree/main/emerging-threats/php-rce-october-26) has the guide. `SHA256SUMS` lists the archives.
+**What is in a release.** One archive per architecture, `linux/amd64` and `linux/arm64`. Each contains `process-watcher` (a single static binary; the eBPF programs are embedded, nothing else is needed at run time), `process-watcher.yaml` (the documented example configuration), `LICENSE`, and below `php/` the two configurations of the PHP kit (`php-observe.yaml` observes every PHP runtime, `php-fpm-kill-signatures.yaml` holds the PHP-FPM response rules and ships as a dry run), usable right after unpacking; the [PHP kit](https://github.com/@REPO@/tree/main/emerging-threats/php-rce-october-26) has the guide. `SHA256SUMS` lists the archives.
 
 **Install**
 
