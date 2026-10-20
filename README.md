@@ -5,6 +5,20 @@
 # process-watcher
 A process monitoring tool that tries to detect exploitation
 
+> [!IMPORTANT]
+> **Emerging threat: critical PHP security release on 21 October 2026, 14:00 UTC.** The PHP project announced it on
+> 20 October ([announcement](https://www.php.net/archive/2026.php#2026-10-20-1)): two critical vulnerabilities, both
+> rated CVSS v4.0 9.2. Details, affected versions and fixes come with the release, which may come earlier if details
+> become public or exploitation starts. Prepare to update PHP now.
+>
+> The announcement does not say what kind of flaws these are. If an attack makes PHP start programs, process-watcher
+> shows each one with its command line and can optionally kill the ones you name. It does not look for these flaws: it
+> prevents nothing and misses code that runs inside PHP without starting a process, so it adds a detection layer and
+> does not replace the patch.
+>
+> **Start here: [watching PHP with process-watcher](emerging-threats/php-rce-october-26/README.md)**, or read the
+> [full PHP guide](emerging-threats/php-rce-october-26/guide.md).
+
 **See what a service starts.** process-watcher follows a service (a web server, an application server, ...) and every
 process it creates, in real time, and logs each start, program change and exit as JSON, optionally with the command
 line. When your web server suddenly runs a shell or `curl`, you see what was started, by which process and from which
