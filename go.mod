@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/cilium/ebpf v0.22.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/sys v0.49.0
 )
 
